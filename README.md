@@ -1,6 +1,6 @@
-# Kernel(No name yet)
+# Lazux
 
-Kernel is an experimental operating system project focused on **kernel design from first principles**.
+Lazux is an experimental operating system project focused on **kernel design from first principles**.
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
@@ -10,7 +10,7 @@ This repository currently contains the **early bring-up (Phase 0)** of the kerne
 
 ## Project Goals
 
-Kernel is designed around the following ideas:
+Lazux is designed around the following ideas:
 
 - **Simplicity over feature count**
 - **Explicit design decisions**, not legacy compatibility
@@ -88,7 +88,7 @@ This project is developed by a Computer Science student with a strong interest i
 - low-level systems programming
 - understanding how complex systems are built from simple rules
 
-Kernel is both a learning journey and an attempt to design a kernel that stays *conceptually clean* as it grows.
+Lazux is both a learning journey and an attempt to design a kernel that stays *conceptually clean* as it grows.
 
 ---
 

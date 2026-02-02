@@ -1,4 +1,4 @@
-# Kernel – Development Log
+# Lazux – Development Log
 
 This file tracks **technical progress and decisions** during development.
 It intentionally avoids personal information and focuses on implementation details.
