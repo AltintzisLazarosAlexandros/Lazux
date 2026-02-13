@@ -3,3 +3,5 @@
 
 void sbi_putchar(char c);
 void sbi_puts(const char *s);
+/*void sbi_getchar(char c);
+void sbi_gets(const char *s);*/

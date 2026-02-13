@@ -5,7 +5,7 @@ It intentionally avoids personal information and focuses on implementation detai
 
 ---
 
-## 2026-01-30 — Phase 0: Initial Kernel Bring-up
+## 30-01-2026 — Phase 0: Initial Kernel Bring-up
 
 ### Completed
 - Set up a bare-metal RISC-V kernel environment targeting QEMU `virt`
@@ -45,3 +45,49 @@ Only after trap handling is stable will the project proceed to:
 - system call handling
 - memory management primitives
 
+---
+
+## 13-02-2026 — Phase 0: Trap System Finalized
+
+### Summary
+
+Completed implementation of a full trap infrastructure in Supervisor mode.
+This milestone establishes reliable exception handling and return semantics.
+
+### Implemented
+
+Installed stvec in Direct mode.
+Implemented trap_entry in assembly.
+Used sscratch to store the trapframe pointer.
+Used csrrw to atomically preserve original t0.
+Implemented perfect full-register save/restore.
+Captured CSRs (sepc, sstatus, scause, stval).
+Implemented returnable breakpoint handling.
+Added compressed instruction length detection using 16-bit decoding rule.
+Verified behavior under -O2.
+
+### Technical Notes
+
+sepc may be only 2-byte aligned due to compressed instructions.
+Instruction length is determined by:
+(insn16 & 0x3) != 0x3 → 16-bit
+Avoided misaligned 32-bit instruction loads by reading 16-bit values.
+Kernel traps are fully deterministic and do not corrupt register state.
+Single global trapframe is used (single-hart assumption).
+
+### Architectural Decisions
+
+Kernel traps must preserve all registers.
+No kernel preemption in Phase 0.
+Direct-mode trap vector only.
+Single-core system assumption.
+Fail-fast philosophy will be applied for unexpected S-mode faults (to be formalized next phase).
+
+### Stability
+
+Confirmed no register corruption.
+Confirmed correct return after ebreak.
+Confirmed stability under optimization (-O2).
+Confirmed compatibility with compressed instruction set (rv64gc).
+
+Phase 0 trap handling is considered complete.

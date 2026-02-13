@@ -15,11 +15,11 @@ LDFLAGS := -T linker.ld -nostdlib
 INCLUDES := -Iinclude
 
 # ===== Sources =====
-KERNEL_C   := main.c arch/riscv/sbi.c
-KERNEL_S   := arch/riscv/entry.S
+KERNEL_C   := main.c arch/riscv/sbi.c arch/riscv/trap_handler.c
+KERNEL_S   := arch/riscv/entry.S arch/riscv/trap.S
 USER_S     := user/init.S
 
-KERNEL_OBJ := $(KERNEL_C:.c=.o) $(KERNEL_S:.S=.o) $(USER_S:.S=.o)
+KERNEL_OBJ := $(KERNEL_S:.S=.o) $(KERNEL_C:.c=.o) $(USER_S:.S=.o)
 
 # ===== Targets =====
 all: kernel.elf

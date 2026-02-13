@@ -1,4 +1,4 @@
-#include "../../include/sbi.h"
+#include "sbi.h"
 
 static inline long sbi_ecall(long eid, long fid,
                              long arg0, long arg1, long arg2,
@@ -29,3 +29,11 @@ void sbi_putchar(char c) {
 void sbi_puts(const char *s){
 	while (*s) sbi_putchar(*s++);
 }
+
+/*void sbi_getchar(char c){
+
+}
+
+void sbi_gets(const char *s){
+
+}*/

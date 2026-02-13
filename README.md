@@ -41,9 +41,9 @@ What exists so far:
 - `.bss` clearing in assembly
 - `kmain` executing successfully in **Supervisor mode**
 - Console output via SBI
+- traps / exceptions
 
 At this stage, the kernel does **not** yet include:
-- traps / exceptions
 - user-mode execution
 - system calls
 - scheduling
