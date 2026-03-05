@@ -1,6 +1,8 @@
 #include "trap_header.h"
 #include "sbi.h"
 
+extern void switch_to_user(void);
+
 trap_frame_t g_tf;
 
 static void puthex(uintptr_t x) {
@@ -22,6 +24,15 @@ static inline uintptr_t insn_len_at(uintptr_t pc) {
 
 
 void trap_handler(trap_frame_t* tf) {
+  if (tf->scause == 0x8) { 
+      // Handle the syscall!
+      // Hint: The user program put the character to print in tf->a0.
+      sbi_putchar((char)tf->a0);
+      
+      // Advance sepc so we don't execute the same ecall again
+      tf->sepc += 4; 
+      return;
+  }
   sbi_puts("\n[TRAP]\n  scause=0x"); puthex(tf->scause);
   sbi_puts("\n  sepc  =0x"); puthex(tf->sepc);
   sbi_puts("\n  stval =0x"); puthex(tf->stval);

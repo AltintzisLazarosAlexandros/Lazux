@@ -15,7 +15,7 @@ LDFLAGS := -T linker.ld -nostdlib
 INCLUDES := -Iinclude
 
 # ===== Sources =====
-KERNEL_C   := main.c arch/riscv/sbi.c arch/riscv/trap_handler.c
+KERNEL_C   := main.c arch/riscv/sbi.c arch/riscv/trap_handler.c arch/riscv/cpu.c
 KERNEL_S   := arch/riscv/entry.S arch/riscv/trap.S
 USER_S     := user/init.S
 

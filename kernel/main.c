@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 extern void trap_entry(void);
+extern void switch_to_user(void);
 
 static inline void write_stvec(uintptr_t value) {
   __asm__ volatile ("csrw stvec, %0" :: "r"(value) : "memory");
@@ -25,5 +26,8 @@ void kmain(void) {
   __asm__ volatile("ebreak");
 
   sbi_puts("Hello after trap\n");
-  for (;;) __asm__ volatile("wfi");
+
+  sbi_puts("Jumping to user mode...\n");
+  switch_to_user(); // This will drop privileges and jump to user_entry!
+
 }
