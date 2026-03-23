@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently contains the **early bring-up (Phase 0)** of the kernel.
+This repository currently tracks the transition from **Phase 0 (Bring-up)** to **Phase 1 (User Mode & Isolation)**.
 
 ---
 
@@ -30,27 +30,28 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-The project is currently in **Phase 0: Early Kernel Bring-up**.
+The project has successfully bridged Supervisor and User modes. 
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
 - Boot via **OpenSBI**
-- Custom linker script
-- Assembly entry point
-- Kernel stack setup
-- `.bss` clearing in assembly
+- Custom linker script & Assembly entry point
+- Kernel stack setup & `.bss` initialization
 - `kmain` executing successfully in **Supervisor mode**
 - Console output via SBI
-- traps / exceptions
+- Full S-mode Trap/Exception handling with register preservation
+- **User-mode execution (U-mode)**
+- **System Call boundary (ABI) and basic routing (`ecall`)**
+
+### Current Focus: Virtual Memory (Sv39)
+To enforce the principle of explicit authority, the kernel's current primary focus is implementing **Virtual Memory**. Before expanding the syscall API, the system is building a bitmap-based physical memory allocator to pave the way for Sv39 page tables and true process isolation.
 
 At this stage, the kernel does **not** yet include:
-- user-mode execution
-- system calls
-- scheduling
-- memory management
-- drivers
+- dynamic virtual memory mapping (WIP)
+- scheduling / multitasking
+- complex drivers
 
-These will be introduced incrementally in later phases.
+These will be introduced incrementally as the memory foundation solidifies.
 
 ---
 
@@ -59,7 +60,7 @@ These will be introduced incrementally in later phases.
 Planned design principles (subject to refinement as the project evolves):
 
 - Capability-based authority model
-- Application-level isolation via domains
+- Application-level isolation via domains (enforced by hardware MMU)
 - Coarse-grained revocation (kill domain)
 - Minimal kernel with most services in user space
 - Predictable execution model
@@ -98,4 +99,3 @@ This is a research / educational project.
 It is **not** intended to be production-ready or secure at this stage.
 
 Expect breaking changes, rewrites, and design evolution.
-
