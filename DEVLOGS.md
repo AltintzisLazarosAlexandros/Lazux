@@ -98,3 +98,26 @@ Successfully transitioned the CPU from Supervisor mode to User mode and executed
 - Implement Sv39 Page Table abstractions (allocating root tables, inserting PTEs).
 - Establish an identity map for the kernel.
 - Migrate the user payload into an isolated virtual address space.
+
+---
+
+## 24-03-2026 — Phase 2: Physical Memory Allocation (PMM)
+
+### Summary
+Successfully implemented a Bitmap-based Physical Memory Manager (`pmm.c`) to manage the 128MB of physical RAM provided by the QEMU `virt` machine. This establishes the foundational layer required for Sv39 Virtual Memory. 
+
+### Implemented
+- **Linker Boundary Tracking:** Updated `linker.ld` to dynamically calculate the end of the kernel footprint using the location counter (`.`) and exposed an `_end` symbol aligned to a 4KB boundary (`ALIGN(4096)`).
+- **Bitmap Allocator:** Implemented a single-page (4096-byte) bitmap capable of tracking exactly 32,768 physical frames (4KB each). 
+- **Memory Protection:** Implemented bitwise logic (`bitmap[i / 8] |= (1 << (i % 8))`) to pre-allocate and protect the lower RAM regions occupied by OpenSBI (first 2MB) and the Lazux kernel itself.
+- **Allocation API:** Implemented `pmm_alloc_page()`, utilizing bit-level scanning to find the first free frame, mark it as used, and translate the array index back into a raw 64-bit physical address. Handled Out-of-Memory (OOM) via `NULL` returns.
+- **Build System Upgrade:** Refactored the `Makefile` to use variables, object lists (`OBJS`), and pattern rules (`%.o: %.c`), eliminating hardcoded compilation lines and ensuring scalability for future subsystems.
+
+### Technical Notes & Bug Avoidance
+- **Bitmap vs. Bytemap:** A critical distinction was enforced between the byte-sized array elements (`uint8_t`) and the bit-level frame representations. Direct array assignment (`bitmap[i] = 1`) was explicitly avoided in favor of bitwise OR/AND operations to prevent catastrophic memory tracking overlap.
+- **Pointer/Integer Conversion:** Enforced explicit casting between generic memory addresses (`void*`) and integer types (`uintptr_t`) for printing operations to maintain strict C type compliance and avoid `-Werror` build failures. 
+
+### Next Steps (Phase 2.5)
+- Implement Sv39 Virtual Memory mapping abstractions.
+- Create functions to allocate a Root Page Table and insert Page Table Entries (PTEs).
+- Establish an identity map for the kernel to ensure survival once the MMU is activated (`satp` register configuration).

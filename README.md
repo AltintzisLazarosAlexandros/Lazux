@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks the transition from **Phase 0 (Bring-up)** to **Phase 1 (User Mode & Isolation)**.
+This repository currently tracks the transition through **Phase 2 (Memory Management Foundation)**.
 
 ---
 
@@ -30,7 +30,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-The project has successfully bridged Supervisor and User modes. 
+The project has successfully bridged Supervisor and User modes and is actively building the memory management subsystem.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -42,9 +42,10 @@ What exists so far:
 - Full S-mode Trap/Exception handling with register preservation
 - **User-mode execution (U-mode)**
 - **System Call boundary (ABI) and basic routing (`ecall`)**
+- **Physical Memory Manager (Bitmap-based, 4KB frame granularity)**
 
-### Current Focus: Virtual Memory (Sv39)
-To enforce the principle of explicit authority, the kernel's current primary focus is implementing **Virtual Memory**. Before expanding the syscall API, the system is building a bitmap-based physical memory allocator to pave the way for Sv39 page tables and true process isolation.
+### Current Focus: Virtual Memory (Sv39 Paging)
+To enforce the principle of explicit authority and prevent malicious memory access, the kernel is currently implementing **Sv39 Virtual Memory**. With the physical page allocator (PMM) now complete, the immediate next steps involve building 3-level radix page tables, establishing an identity map for the kernel, and configuring the MMU (`satp` register) to isolate the user space.
 
 At this stage, the kernel does **not** yet include:
 - dynamic virtual memory mapping (WIP)
