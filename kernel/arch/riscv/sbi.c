@@ -30,6 +30,12 @@ void sbi_puts(const char *s){
 	while (*s) sbi_putchar(*s++);
 }
 
+void puthex(uintptr_t x) {
+    static const char* h = "0123456789abcdef";
+    for (int i = (int)(sizeof(uintptr_t) * 8) - 4; i >= 0; i -= 4)
+        sbi_putchar(h[(x >> i) & 0xF]);
+}
+
 /*void sbi_getchar(char c){
 
 }

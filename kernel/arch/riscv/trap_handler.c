@@ -5,12 +5,6 @@ extern void switch_to_user(void);
 
 trap_frame_t g_tf;
 
-static void puthex(uintptr_t x) {
-    static const char* h = "0123456789abcdef";
-    for (int i = (int)(sizeof(uintptr_t) * 8) - 4; i >= 0; i -= 4)
-        sbi_putchar(h[(x >> i) & 0xF]);
-}
-
 static inline int from_supervisor(trap_frame_t* tf) {
     // SPP bit is bit 8 of sstatus; 1 = came from S-mode, 0 = came from U-mode
     return (tf->sstatus >> 8) & 1;

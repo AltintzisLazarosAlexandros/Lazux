@@ -1,44 +1,49 @@
-# ===== Toolchain =====
-CROSS ?= riscv64-unknown-elf-
-CC    := $(CROSS)gcc
-LD    := $(CROSS)ld
-OBJCOPY := $(CROSS)objcopy
-OBJDUMP := $(CROSS)objdump
+# Toolchain
+CC = riscv64-unknown-elf-gcc
+OBJDUMP = riscv64-unknown-elf-objdump
+QEMU = qemu-system-riscv64
 
-# ===== Flags =====
-CFLAGS  := -std=c11 -ffreestanding -fno-builtin -fno-omit-frame-pointer \
-           -fno-strict-aliasing -Wall -Wextra -Werror -O0 -g3 \
-           -mcmodel=medany -march=rv64gc -mabi=lp64d
-ASFLAGS := -mcmodel=medany -march=rv64gc -mabi=lp64d
-LDFLAGS := -T linker.ld -nostdlib
+# Compiler Flags
+CFLAGS = -std=c11 -ffreestanding -fno-builtin -fno-omit-frame-pointer \
+         -fno-strict-aliasing -Wall -Wextra -Werror -O0 -g3 \
+         -mcmodel=medany -march=rv64gc -mabi=lp64d -Iinclude
 
-INCLUDES := -Iinclude
+# Assembly Flags
+ASMFLAGS = -mcmodel=medany -march=rv64gc -mabi=lp64d -Iinclude
 
-# ===== Sources =====
-KERNEL_C   := main.c arch/riscv/sbi.c arch/riscv/trap_handler.c arch/riscv/cpu.c
-KERNEL_S   := arch/riscv/entry.S arch/riscv/trap.S
-USER_S     := user/init.S
+# Linker Flags
+LDFLAGS = -T linker.ld -nostdlib
 
-KERNEL_OBJ := $(KERNEL_S:.S=.o) $(KERNEL_C:.c=.o) $(USER_S:.S=.o)
+OBJS = \
+    arch/riscv/entry.o \
+    arch/riscv/trap.o \
+    arch/riscv/sbi.o \
+    arch/riscv/trap_handler.o \
+    arch/riscv/cpu.o \
+    mm/pmm.o \
+    user/init.o \
+    main.o
 
-# ===== Targets =====
+# Default target
 all: kernel.elf
 
-kernel.elf: $(KERNEL_OBJ) linker.ld
-	$(CC) $(CFLAGS) $(INCLUDES) $(KERNEL_OBJ) $(LDFLAGS) -o $@
-	$(OBJDUMP) -d $@ > kernel.disasm
+# Linking the final kernel
+kernel.elf: $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o kernel.elf
 
+# Pattern Rule for C files
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
+# Pattern Rule for Assembly files
 %.o: %.S
-	$(CC) $(ASFLAGS) -c $< -o $@
+	$(CC) $(ASMFLAGS) -c $< -o $@
 
-run: kernel.elf
-	qemu-system-riscv64 -machine virt -nographic -bios default -kernel kernel.elf
-
+# Clean up
 clean:
-	rm -f $(KERNEL_OBJ) kernel.elf kernel.disasm
+	rm -f $(OBJS) kernel.elf kernel.disasm
 
-.PHONY: all run clean
-
+# Run in QEMU
+run: kernel.elf
+	$(OBJDUMP) -d kernel.elf > kernel.disasm
+	$(QEMU) -machine virt -nographic -bios default -kernel kernel.elf
