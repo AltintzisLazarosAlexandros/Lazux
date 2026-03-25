@@ -21,6 +21,8 @@ OBJS = \
     arch/riscv/trap_handler.o \
     arch/riscv/cpu.o \
     mm/pmm.o \
+    mm/vmm.o \
+    lib/string.o \
     user/init.o \
     main.o
 

@@ -121,3 +121,28 @@ Successfully implemented a Bitmap-based Physical Memory Manager (`pmm.c`) to man
 - Implement Sv39 Virtual Memory mapping abstractions.
 - Create functions to allocate a Root Page Table and insert Page Table Entries (PTEs).
 - Establish an identity map for the kernel to ensure survival once the MMU is activated (`satp` register configuration).
+
+---
+
+## 25-03-2026 — Phase 2.5: Sv39 Virtual Memory & User Space Transition
+
+### Summary
+Successfully activated the RISC-V Memory Management Unit (MMU) and transitioned the kernel from physical addressing to Sv39 Virtual Memory. Achieved a secure hardware-enforced privilege drop to User-mode (U-mode) executing a paged payload.
+
+### Implemented
+- **PTE & VPN Abstractions:** Defined strict bitwise macros (`vmm.h`) for Page Table Entry manipulation, extracting Virtual Page Numbers, and safely translating between PTEs and Physical Addresses (`PTE_TO_PA`, `PA_TO_PTE`).
+- **Radix Tree Traversal:** Implemented `map_page()` to dynamically walk the 3-level page table, automatically allocating and zeroing intermediate directories (Level 1, Level 0) via the physical memory manager when valid paths do not exist.
+- **Kernel Identity Mapping:** Mapped the kernel's physical footprint directly to its virtual equivalent to ensure survival during the `satp` activation flip.
+- **User Space Isolation:** Refactored `linker.ld` to page-align (`ALIGN(4096)`) the `.user` section. Parsed `__user_start` and `__user_end` symbols in C to explicitly map the user payload with `PTE_U` (User) permissions, denying S-mode access and hardware-enforcing the privilege boundary.
+- **MMU Activation:** Computed the Sv39 mode bitmask, wrote to the `satp` register, and flushed the Translation Lookaside Buffer (TLB) via `sfence.vma`.
+
+### Technical Notes & Bug Avoidance
+- **The Pointer Overwrite Trap:** Averted a catastrophic C pointer bug during page table traversal by strictly differentiating between writing to the PTE memory (`*pte = ...`) and updating the local traversal pointer (`current_table = ...`).
+- **Pre-MMU Allocation Hazard:** Discovered that physical pages allocated *before* MMU activation become unreachable hardware traps if not explicitly mapped into the active Root Page Table. Removed premature `pmm_alloc_page()` calls before user-space transition to prevent S-mode Load Page Faults (`scause=0xd`).
+- **The M-Mode Reality:** Intentionally excluded OpenSBI (first 2MB of RAM) from the kernel's page tables, recognizing that Machine Mode (M-mode) bypasses the MMU entirely and relies on raw physical addresses and PMP hardware locks.
+
+### Next Steps (Phase 3: Process Management)
+- Break away from the static `.user` payload model.
+- Define a `struct process` (PCB) to encapsulate execution state.
+- Implement independent Root Page Tables for isolated processes.
+- Load ELFs or raw binaries into fresh, anonymous physical pages mapped to a standard virtual base address (e.g., `0x400000`).

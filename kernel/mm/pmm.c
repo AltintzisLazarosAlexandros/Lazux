@@ -1,15 +1,5 @@
 #include "pmm.h"
 
-// 1. Import the symbol from your linker.ld
-extern uint8_t _end[];
-
-// 2. Define your constants
-#define PAGE_SIZE 4096
-#define PHYSICAL_RAM_START 0x80000000
-#define PHYSICAL_RAM_SIZE (128 * 1024 * 1024) // 128 MB
-#define TOTAL_PAGES (PHYSICAL_RAM_SIZE / PAGE_SIZE)
-#define ROUNDUP(b) (((b) + PAGE_SIZE - 1) / PAGE_SIZE)
-
 // 3. The Bitmap Pointer
 uint8_t *bitmap;
 

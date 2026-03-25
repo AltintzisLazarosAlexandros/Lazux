@@ -30,29 +30,29 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-The project has successfully bridged Supervisor and User modes and is actively building the memory management subsystem.
+The project has successfully activated hardware memory isolation and is executing user programs within a fully paged environment.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
 - Boot via **OpenSBI**
 - Custom linker script & Assembly entry point
-- Kernel stack setup & `.bss` initialization
 - `kmain` executing successfully in **Supervisor mode**
 - Console output via SBI
 - Full S-mode Trap/Exception handling with register preservation
-- **User-mode execution (U-mode)**
 - **System Call boundary (ABI) and basic routing (`ecall`)**
 - **Physical Memory Manager (Bitmap-based, 4KB frame granularity)**
+- **Virtual Memory Manager (Sv39 Paging, 3-level radix tree)**
+- **MMU Activation & Kernel Identity Mapping**
+- **Hardware-enforced User-mode execution (U-mode via `PTE_U`)**
 
-### Current Focus: Virtual Memory (Sv39 Paging)
-To enforce the principle of explicit authority and prevent malicious memory access, the kernel is currently implementing **Sv39 Virtual Memory**. With the physical page allocator (PMM) now complete, the immediate next steps involve building 3-level radix page tables, establishing an identity map for the kernel, and configuring the MMU (`satp` register) to isolate the user space.
+### Current Focus: Phase 3 - Process Management
+With the Sv39 Virtual Memory foundation rock solid, the kernel is transitioning from a "single embedded payload" execution model to a multi-process architecture. 
 
-At this stage, the kernel does **not** yet include:
-- dynamic virtual memory mapping (WIP)
-- scheduling / multitasking
-- complex drivers
-
-These will be introduced incrementally as the memory foundation solidifies.
+The immediate next steps involve:
+- Defining the Process Control Block (`struct process`).
+- Generating isolated, per-process Root Page Tables (breaking away from kernel identity-mapping for user code).
+- Standardizing the user-space virtual address layout (e.g., all programs start at `0x400000`).
+- Context switching mechanisms.
 
 ---
 

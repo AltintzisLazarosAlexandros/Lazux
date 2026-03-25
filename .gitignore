@@ -1,5 +1,6 @@
 *.o
 *.elf
 *.disasm
-
+/docs/
+.gitignore
 
