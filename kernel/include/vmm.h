@@ -25,3 +25,4 @@ typedef struct
 } page_table_t;
 
 int map_page(page_table_t *root, uintptr_t va, uintptr_t pa, uint64_t flags);
+void vmm_map_kernel(page_table_t* pt);

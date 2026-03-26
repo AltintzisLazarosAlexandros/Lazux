@@ -32,36 +32,11 @@ void kmain(void)
   if (root_pt == 0)
   {
     sbi_puts("PANIC: Failed to allocate root page table!\n");
-    while (1)
-      ;
+    while (1);
   }
-  memset(root_pt, 0, 4096);
-
-
-  uintptr_t kernel_start = 0x80200000;
-  uintptr_t kernel_end = (uintptr_t)_end;
-
-  uintptr_t user_start = (uintptr_t)__user_start;
-  uintptr_t user_end = (uintptr_t)__user_end;
-
-  for (uintptr_t addr = kernel_start; addr < kernel_end; addr += 4096)
-  {
-
-    uint64_t flags = PTE_R | PTE_W | PTE_X;
-
-    if (addr >= user_start && addr < user_end)
-    {
-      flags |= PTE_U;
-    }
-
-    int status = map_page(root_pt, addr, addr, flags);
-    if (status == -1)
-    {
-      sbi_puts("PANIC: Out of memory during kernel mapping!\n");
-      while (1)
-        ;
-    }
-  }
+ page_table_t* root_pt = (page_table_t*)pmm_alloc_page();
+    memset(root_pt, 0, 4096);
+    vmm_map_kernel(root_pt);
 
   sbi_puts("Kernel mapped successfully!\n");
   /**
