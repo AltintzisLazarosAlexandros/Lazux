@@ -1,3 +1,4 @@
+#include "sbi.h"
 #include "vmm.h"
 #include "pmm.h"
 #include "string.h"
@@ -34,8 +35,8 @@ int map_page(page_table_t *root, uintptr_t va, uintptr_t pa, uint64_t flags)
 
 void vmm_map_kernel(page_table_t* pt) {
     uintptr_t kernel_start = 0x80200000;
-    uintptr_t kernel_end = (uintptr_t)_end;
-    for (uintptr_t addr = kernel_start; addr < kernel_end; addr += 4096) {
+    uintptr_t physical_ram_end = 0x88000000;
+    for (uintptr_t addr = kernel_start; addr < physical_ram_end; addr += 4096) {
       	int status = map_page(pt, addr, addr, PTE_R | PTE_W | PTE_X);
         	if (status == -1) {
       sbi_puts("PANIC: vmm_map_kernel out of memory!\n");

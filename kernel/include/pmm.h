@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <stdint.h>
 
 // 1. Import the symbol from your linker.ld
 extern uint8_t _end[];

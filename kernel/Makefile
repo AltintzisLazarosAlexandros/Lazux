@@ -16,12 +16,14 @@ LDFLAGS = -T linker.ld -nostdlib
 
 OBJS = \
     arch/riscv/entry.o \
+    arch/riscv/switch.o \
     arch/riscv/trap.o \
     arch/riscv/sbi.o \
     arch/riscv/trap_handler.o \
     arch/riscv/cpu.o \
     mm/pmm.o \
     mm/vmm.o \
+    proc/process.o \
     lib/string.o \
     user/init.o \
     main.o

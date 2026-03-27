@@ -2,7 +2,7 @@
 
 extern void user_entry(void);
 
-void switch_to_user(void)
+/*void switch_to_user(trap_frame_t* tf, uint64_t satp_val)
 {
   uintptr_t sstatus_val;
 
@@ -22,4 +22,4 @@ void switch_to_user(void)
   __asm__ volatile("csrw sepc, %0" ::"r"((uintptr_t)user_entry));
 
   __asm__ volatile("sret");
-}
+}*/

@@ -1,6 +1,8 @@
 #include "trap_header.h"
 #include "vmm.h"
 
+extern void switch_to_user(trap_frame_t* tf, uint64_t satp_val);
+
 typedef enum{
 	PROC_UNUSED,
 	PROC_READY,

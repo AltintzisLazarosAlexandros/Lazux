@@ -61,6 +61,9 @@ trap_entry:
 
     # Call C handler(tf)
     mv a0, t0
+
+    ld sp, 280(t0)
+
     call trap_handler
 
     # Restore CSRs (handler may have changed sepc/sstatus)

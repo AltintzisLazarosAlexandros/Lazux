@@ -44,6 +44,8 @@ typedef struct trap_frame_t
   uintptr_t sstatus; // 256
   uintptr_t scause;  // 264
   uintptr_t stval;   // 272
+
+  uint64_t kernel_sp;
 } trap_frame_t;
 
 void trap_handler(trap_frame_t *tf);

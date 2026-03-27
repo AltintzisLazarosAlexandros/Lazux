@@ -146,3 +146,27 @@ Successfully activated the RISC-V Memory Management Unit (MMU) and transitioned 
 - Define a `struct process` (PCB) to encapsulate execution state.
 - Implement independent Root Page Tables for isolated processes.
 - Load ELFs or raw binaries into fresh, anonymous physical pages mapped to a standard virtual base address (e.g., `0x400000`).
+
+---
+
+## 27-03-2026 — Phase 3: Process Abstraction & Hardware Isolation
+
+### Summary
+Successfully transitioned from a single embedded payload to a multi-process architecture. Established full hardware isolation by giving each process its own Virtual Address Space, Trapframe, and safe Kernel Stack. Achieved successful execution of isolated User-mode code and validated hardware-level termination of U-mode Page Faults.
+
+### Implemented
+- **Process Control Block (`process_t`):** Created a process management structure containing a PID, state, a private Root Page Table, a Trapframe, and an isolated Kernel Stack.
+- **Full Linear RAM Mapping:** Upgraded the VMM to identity-map the entire physical RAM (up to 128MB on QEMU virt) in the kernel's top-half. This solved kernel-side `Load Page Faults` when the PMM allocated new physical pages dynamically.
+- **Pure Assembly Context Switch (`switch.S`):** Replaced the C-based user switch with a strict assembly routine (`switch_to_user`). It correctly swaps the `satp` register, flushes the TLB (`sfence.vma`), restores all 31 general-purpose registers, sets up the `sscratch` breadcrumb, and executes `sret`.
+- **The "Lifeboat" Kernel Stack:** Solved the "Infinite Loop of Death" (S-mode double faults caused by trusting the U-mode stack). Modified `trap.S` to explicitly load a trusted, per-process `kernel_sp` from the Trapframe before calling the C trap handler.
+- **W^X Protection:** Mapped the Kernel Stack with `PTE_R | PTE_W` but explicitly excluded `PTE_X` (Execute) and `PTE_U` (User) to prevent shellcode execution and user-space tampering.
+- **Standardized Virtual Layout:** All user programs are now loaded and mapped to start at virtual address `0x400000`.
+
+### Architectural Decisions
+- **Deep Copy vs. Shallow Copy in Page Tables:** Decided strictly against `memcpy` for process Root Page Tables to avoid sharing Level 1/0 directories with the kernel. Instead, the kernel's mappings are dynamically rebuilt (`vmm_map_kernel`) for every new process.
+- **Trap Handling Symmetry:** Kernel traps and User traps now have distinctly different stack requirements. The system relies on hardware enforcement (`scause=0xc`) to ruthlessly kill user processes that attempt to execute unmapped or unauthorized memory (e.g., dereferencing `0x0`).
+
+### Next Steps (Phase 4: Concurrency & Loading)
+- Enable Machine-Mode (M-mode) timer interrupts via OpenSBI.
+- Implement a Preemptive Scheduler to context-switch between multiple isolated processes automatically.
+- Implement an ELF loader to read standard executables instead of raw binary payloads.
