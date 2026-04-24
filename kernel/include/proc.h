@@ -26,3 +26,4 @@ process_t* alloc_proc(void);
 
 void load_user_program(process_t* p);
 
+trap_frame_t* schedule(trap_frame_t* inter_tf);

@@ -7,6 +7,7 @@
 
 process_t process_table[64];
 static int next_pid = 1;
+process_t* current_proc = 0;
 
 void proc_init(void){
 	for (int i = 0; i < 64; i++){
@@ -81,4 +82,42 @@ void load_user_program(process_t *p){
     }
 	p->trap_frame.sepc = user_base_va;
 	p->trap_frame.gp = user_base_va + size;
+}
+
+trap_frame_t* schedule(trap_frame_t* inter_tf){
+	if(current_proc == 0){
+		return inter_tf;
+	}
+
+	current_proc->trap_frame = *inter_tf;
+	current_proc->state = PROC_READY;
+
+	int current_index = (current_proc - process_table);
+	int next_index = current_index;
+	process_t* next_proc = 0;
+
+	for(int i = 0; i < MAX_PROCS; i++){
+		next_index = (next_index + 1) % MAX_PROCS;
+		if (process_table[next_index].state == PROC_READY) {
+            		next_proc = &process_table[next_index];
+            		break;
+        	}
+    	}
+
+	if (next_proc == 0 || next_proc == current_proc) {
+        	current_proc->state = PROC_RUNNING;
+        	return inter_tf;
+    	}
+
+	current_proc = next_proc;
+    	current_proc->state = PROC_RUNNING;
+
+	uintptr_t satp_val = MAKE_SATP(current_proc->page_table);
+    	__asm__ volatile(
+        	"csrw satp, %0\n"
+        	"sfence.vma zero, zero"
+        	: : "r"(satp_val) : "memory"
+    	);
+
+	return &current_proc->trap_frame;
 }

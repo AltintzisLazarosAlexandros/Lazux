@@ -41,6 +41,10 @@ void puthex(uintptr_t x)
     sbi_putchar(h[(x >> i) & 0xF]);
 }
 
+void sbi_set_timer(uint64_t stime_value){
+	(void)sbi_ecall(0x54494D45, 0, (long)stime_value, 0, 0, 0, 0, 0);
+}
+
 /*void sbi_getchar(char c){
 
 }

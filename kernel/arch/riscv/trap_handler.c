@@ -2,6 +2,8 @@
 #include "sbi.h"
 
 extern void switch_to_user(void);
+extern uint64_t read_time(void);
+extern trap_frame_t* schedule(trap_frame_t* inter_tf);
 
 trap_frame_t g_tf;
 
@@ -11,8 +13,26 @@ static inline int from_supervisor(trap_frame_t *tf)
     return (tf->sstatus >> 8) & 1;
 }
 
-void trap_handler(trap_frame_t *tf)
+trap_frame_t* trap_handler(trap_frame_t *tf)
 {
+    uint64_t scause = tf->scause;
+    int is_interrupt = (scause & 0x8000000000000000ULL) != 0;
+    uint64_t exception_code = scause & 0x7FFFFFFFFFFFFFFFULL;
+
+    if (is_interrupt) {
+        if (exception_code == 5) { // Supervisor Timer Interrupt
+            sbi_puts("\n[TICK] Timer Interrupt Fired! 10ms passed.\n");
+            
+            uint64_t now = read_time();
+            sbi_set_timer(now + 100000); 
+            
+            return schedule(tf); 
+        }
+        
+        // Άγνωστο Interrupt
+        sbi_puts("\n[FATAL] unexpected Interrupt!\n");
+        for (;;) {}
+    }
 
     if (from_supervisor(tf))
     {
@@ -26,7 +46,7 @@ void trap_handler(trap_frame_t *tf)
             // compressed instruction detection for sepc advance
             uint16_t h = *(const volatile uint16_t *)tf->sepc;
             tf->sepc += ((h & 0x3u) != 0x3u) ? 2u : 4u;
-            return;
+            return tf;
         }
         // Any other S-mode fault = kernel bug, halt
         sbi_puts("\n[FATAL] unexpected S-mode trap!\n");
@@ -66,7 +86,7 @@ void trap_handler(trap_frame_t *tf)
             {
             }
         }
-        return;
+        return tf;
 
     default:
         // Unexpected U-mode fault: illegal insn, page fault, etc.
@@ -82,4 +102,6 @@ void trap_handler(trap_frame_t *tf)
         {
         }
     }
+
+    return tf;
 }

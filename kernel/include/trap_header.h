@@ -48,5 +48,5 @@ typedef struct trap_frame_t
   uint64_t kernel_sp;
 } trap_frame_t;
 
-void trap_handler(trap_frame_t *tf);
+trap_frame_t* trap_handler(trap_frame_t *tf);
 extern trap_frame_t g_tf;

@@ -10,6 +10,9 @@ extern void *pmm_alloc_page(void);
 extern void load_user_program(process_t *p);
 extern process_t* alloc_proc(void);
 extern void *memset(void *dest, int value, size_t count);
+extern uint64_t read_time();
+extern process_t process_table[64];
+extern process_t* current_proc;
 
 static inline void write_stvec(uintptr_t value)
 {
@@ -61,20 +64,27 @@ void kmain(void)
   // Install trap vector
   write_stvec((uintptr_t)trap_entry);
 
-  /*sbi_puts("Hello before trap\n");
-  sbi_puts("Triggering ebreak...\n");
+ sbi_puts("Initializing Process Subsystem...\n");
   
-  __asm__ volatile("ebreak");
+  proc_init();
 
-  sbi_puts("Hello after trap\n");*/
+  process_t* proc_A = alloc_proc();
+  load_user_program(proc_A); // Της δίνουμε τον κώδικα
 
-  sbi_puts("Jumping to user mode...\n");
+  process_t* proc_B = alloc_proc();
+  load_user_program(proc_B); // Της δίνουμε τον κώδικα
 
-  process_t* init_proc = alloc_proc();
-  load_user_program(init_proc);
+  current_proc = proc_A;
+  current_proc->state = PROC_RUNNING; // Της λέμε ότι αυτή τρέχει
 
-  satp_val = (8ULL << 60) | ((uintptr_t)init_proc->page_table >> 12);
+  satp_val = (8ULL << 60) | ((uintptr_t)current_proc->page_table >> 12);
+    
+  __asm__ volatile("csrs sie, %0" :: "r"(0x20)); 
+  uint64_t now = read_time();
+  sbi_set_timer(now + 100000); 
+  sbi_puts("Timer interrupt armed for 10ms in the future!\n");
 
   sbi_puts("Jumping to isolated user space at 0x400000...\n");
-  switch_to_user(&init_proc->trap_frame, satp_val);
+  
+  switch_to_user(&current_proc->trap_frame, satp_val);
 }

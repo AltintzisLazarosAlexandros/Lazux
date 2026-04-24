@@ -66,6 +66,8 @@ trap_entry:
 
     call trap_handler
 
+    mv t0, a0
+
     # Restore CSRs (handler may have changed sepc/sstatus)
     ld t1, 248(t0)
     csrw sepc, t1
