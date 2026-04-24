@@ -5,6 +5,10 @@
 
 #define MAX_PROCS 64
 
+extern long sbi_ecall(long eid, long fid,
+                             long arg0, long arg1, long arg2,
+                             long arg3, long arg4, long arg5);
+
 process_t process_table[64];
 static int next_pid = 1;
 process_t* current_proc = 0;
@@ -90,7 +94,9 @@ trap_frame_t* schedule(trap_frame_t* inter_tf){
 	}
 
 	current_proc->trap_frame = *inter_tf;
-	current_proc->state = PROC_READY;
+	if (current_proc->state == PROC_RUNNING) {
+        	current_proc->state = PROC_READY;
+    	}
 
 	int current_index = (current_proc - process_table);
 	int next_index = current_index;
@@ -104,10 +110,17 @@ trap_frame_t* schedule(trap_frame_t* inter_tf){
         	}
     	}
 
-	if (next_proc == 0 || next_proc == current_proc) {
-        	current_proc->state = PROC_RUNNING;
-        	return inter_tf;
-    	}
+	if(next_proc == 0){
+		if (current_proc->state == PROC_READY || current_proc->state == PROC_RUNNING) {
+           		current_proc->state = PROC_RUNNING;
+            		return inter_tf;
+        	}
+		else {
+            		sbi_puts("\n[kernel] All processes have finished. System Halting.\n");
+			sbi_ecall(0x53525354, 0, 0, 0, 0, 0, 0, 0);
+			while(1);
+		}
+	}
 
 	current_proc = next_proc;
     	current_proc->state = PROC_RUNNING;

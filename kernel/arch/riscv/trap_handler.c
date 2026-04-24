@@ -1,9 +1,11 @@
 #include "trap_header.h"
 #include "sbi.h"
+#include "proc.h"
 
-extern void switch_to_user(void);
+extern void switch_to_user(trap_frame_t* tf, uint64_t satp_val);
 extern uint64_t read_time(void);
 extern trap_frame_t* schedule(trap_frame_t* inter_tf);
+extern process_t* current_proc;
 
 trap_frame_t g_tf;
 
@@ -74,13 +76,12 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             tf->a0 = 0; // return 0 = success
             break;
         case 2: // SYS_EXIT
-            sbi_puts("\n[kernel] user exited with code ");
-            puthex(tf->a0);
-            sbi_puts("\n");
-            for (;;)
-            {
-            }
-        default:
+            sbi_puts("\n[kernel] Process ");
+            puthex(current_proc->pid);
+            sbi_puts(" exited.\n");
+	    current_proc->state = PROC_UNUSED;
+	    return schedule(tf);
+	default:
             sbi_puts("\n[kernel] unknown syscall, killing user\n");
             for (;;)
             {

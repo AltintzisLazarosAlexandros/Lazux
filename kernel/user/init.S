@@ -6,9 +6,6 @@ user_entry:
   ecall
   li a0, 'i'
   ecall
-  #li a7, 2
-  #li a0, 0
-  #ecall
-
-infinite_loop:
-    j infinite_loop
+  li a7, 2
+  li a0, 0
+  ecall
