@@ -170,3 +170,52 @@ Successfully transitioned from a single embedded payload to a multi-process arch
 - Enable Machine-Mode (M-mode) timer interrupts via OpenSBI.
 - Implement a Preemptive Scheduler to context-switch between multiple isolated processes automatically.
 - Implement an ELF loader to read standard executables instead of raw binary payloads.
+
+---
+
+## 27-04-2026 — Phase 4: Preemptive Multitasking & ELF Loading
+
+### Summary
+Successfully implemented preemptive round-robin scheduling driven by hardware timer interrupts and a complete ELF64 executable loader. The kernel now multiplexes multiple independent C-compiled user processes with automatic context switching, eliminating the static embedded payload model.
+
+### Implemented
+- **ELF64 Parser (`elf.h`, `load_elf()`):** Implemented complete ELF64 header parsing and validation (magic number check, RISC-V machine code validation). Dynamically maps `PT_LOAD` segments from the binary, respecting segment permissions and layout. Correctly handles memory initialization (zeroing BSS) and sets the process entry point via `e_entry`.
+- **Preemptive Scheduler (`schedule()`):** Implemented a Round-Robin scheduler invoked on every timer interrupt. Maintains process state transitions (`PROC_RUNNING` → `PROC_UNUSED` on exit, context switches to next `PROC_READY` task). Gracefully handles process termination via `SYS_EXIT` syscall, marking processes as `PROC_UNUSED` and scheduling the next runnable process.
+- **Hardware Timer Integration:** Interfaced with SBI to arm the Machine-Mode timer via `sbi_set_timer()`. Configured supervisor timer interrupt (`sie` register, bit 5 for `STIE`). Timer fires periodically (~10ms intervals on QEMU virt), triggering exception code 5 (Supervisor Timer Interrupt) in the trap handler.
+- **Interrupt/Exception Differentiation:** Modified `trap_handler()` to distinguish between interrupts (high bit set in `scause`) and exceptions. Routes timer interrupts (exception code 5) to the scheduler; maintains existing exception handling for breakpoints, syscalls, and faults.
+- **Process Table & Global Scheduler State:** Extended `proc_init()` to zero-initialize the process table. Defined `current_proc` global to track the actively executing process. `schedule()` scans the table for the next ready process, updates `current_proc`, and returns the new trapframe for `switch_to_user()` to restore.
+- **Multi-Process User-Space:** The kernel now loads the same ELF binary into multiple processes (`proc_A`, `proc_B`), each with isolated virtual address spaces and independent execution state. Both processes execute in User-mode at the standardized virtual base `0x400000`, with hardware MMU enforcing strict isolation.
+- **Embedded ELF Storage:** Added `payload.S` to embed a pre-compiled ELF binary (`user/init.elf`) into the kernel image using `.incbin`. Kernel references `_user_elf_start` and `_user_elf_end` symbols to locate the ELF payload in memory.
+- **User-Space C Programs:** Created `user/main.c` with a real C program (no inline assembly payload). Uses the syscall ABI to invoke `SYS_PUTCHAR` and `SYS_EXIT`. Compiled as a freestanding ELF binary with custom start code (`user/start.S`).
+
+### Technical Notes & Bug Avoidance
+- **Interrupt vs. Exception Bit:** The high bit of `scause` (`bit 63`) differentiates interrupts from exceptions. Correctly masked via `(scause & 0x8000000000000000ULL) != 0`.
+- **Timer Interval Precision:** Set timer offset to `100,000` cycles on QEMU. Actual wall-clock interval depends on QEMU's simulated clock frequency; precise timing is not critical at this stage but deterministic scheduling is verified.
+- **Segment Alignment:** ELF `PT_LOAD` segments may have different alignment requirements. The loader respects the original segment addresses during mapping to avoid relocation bugs.
+- **Process Table Wraparound:** With 64 process slots, PID assignment wraps after reaching maximum. No PID reuse protection implemented yet; suitable for single-user, single-session model.
+- **Return Value Convention:** `trap_handler()` now returns a `trap_frame_t*` (the new frame to restore) rather than `void`. Allows scheduler to inject the next process's state directly.
+
+### Architectural Decisions
+- **Round-Robin Over Priority-Based:** Chose simple Round-Robin scheduling over priority queues to maintain predictability and reduce cognitive load during early multitasking. Prioritizes correctness and debuggability.
+- **Static ELF Payload vs. Dynamic Loading:** Intentionally embedded the test ELF into the kernel image rather than loading from disk. This sidesteps filesystem complexity and simplifies validation; dynamic loading from persistent storage is deferred to Phase 5.
+- **Graceful vs. Immediate Exit:** When a user process calls `SYS_EXIT`, the kernel marks it `PROC_UNUSED` and immediately schedules the next process. No zombie state or parent process reaping needed at this stage.
+- **Single Timer for All Processes:** Rather than per-process timers, the kernel uses a global hardware timer and reschedules on each tick. Ensures fairness across all processes.
+
+### Stability & Verification
+- Confirmed preemption works: two processes alternate execution every 10ms.
+- Verified context switch correctness: registers, page tables, and trapframes are independent per process.
+- Tested process exit: `SYS_EXIT` correctly transitions to idle when all processes have exited.
+- ELF load validation: correct segment mapping, BSS zeroing, and entry point jumps.
+
+---
+
+## Phase 5: Expansions (Planned)
+
+### Focus Areas
+Phase 5 will expand the kernel and user-space capabilities with file I/O, dynamic memory, and system call extensions.
+
+### Next Steps (Phase 5)
+- **Filesystem/RAMDISK Abstraction:** Implement a simple in-memory filesystem or RAMDISK loader to allow dynamic loading of ELF binaries from a fixed image (rather than embedding them at link time).
+- **Expanded Syscall ABI:** Implement `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for basic file operations; route I/O operations through the kernel's file abstraction layer.
+- **User-Space Heap Management:** Add `SYS_SBRK` syscall to allow user programs to dynamically expand heap memory; coordinate with PMM to allocate physical pages on-demand.
+- **Asynchronous I/O & Interactivity:** Implement UART/Keyboard interrupt handlers to support interactive shell-like capabilities; decouple I/O completion from blocking syscalls using event-driven patterns or wait queues.

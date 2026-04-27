@@ -1,31 +1,54 @@
+/*
+ * main.c - Kernel Entry Point
+ * 
+ * This file contains kmain(), the main C entry point of the kernel.
+ * It initializes core subsystems in the following order:
+ * 1. Physical Memory Manager (PMM) - tracks 4KB pages
+ * 2. Virtual Memory (Sv39 page tables) - sets up paging
+ * 3. Trap handling (stvec, sscratch) - prepares exception handlers
+ * 4. Process subsystem - allocates and loads user processes
+ * 5. Timer interrupts - arms preemptive scheduling
+ */
+
 #include "sbi.h"
 #include "trap_header.h"
 #include "pmm.h"
 #include "string.h"
 #include "proc.h"
+#include "elf.h"
 
-extern void trap_entry(void);
-extern void init_pmm(void);
-extern void *pmm_alloc_page(void);
-extern void load_user_program(process_t *p);
-extern process_t* alloc_proc(void);
-extern void *memset(void *dest, int value, size_t count);
-extern uint64_t read_time();
-extern process_t process_table[64];
-extern process_t* current_proc;
+/* External symbols from other compilation units */
+extern void trap_entry(void);           /* Assembly trap handler entry point */
+extern void init_pmm(void);             /* Initialize physical memory allocator */
+extern void *pmm_alloc_page(void);      /* Allocate a 4KB physical page */
+extern int load_elf(process_t *p, const uint8_t *elf_data);  /* Parse and load ELF binary */
+extern process_t* alloc_proc(void);     /* Create a new process */
+extern void *memset(void *dest, int value, size_t count);    /* Zero/fill memory */
+extern uint64_t read_time(void);        /* Read current timer value */
+extern process_t process_table[64];     /* Global process table */
+extern process_t* current_proc;         /* Currently executing process */
+extern uint8_t _user_elf_start[];       /* Embedded user ELF binary in kernel image */
 
+/* Helper: Write trap handler address to stvec CSR (RISC-V Control/Status Reg) */
 static inline void write_stvec(uintptr_t value)
 {
   __asm__ volatile("csrw stvec, %0" ::"r"(value) : "memory");
 }
 
+/* Helper: Write trapframe pointer to sscratch CSR (used by trap_entry to find trapframe) */
 static inline void write_sscratch(uintptr_t value)
 {
   __asm__ volatile("csrw sscratch, %0" ::"r"(value) : "memory");
 }
 
+/*
+ * kmain - Kernel main function
+ * Called from assembly entry point (_start) after early boot setup.
+ * Initializes all kernel subsystems and launches the first user process.
+ */
 void kmain(void)
 {
+  /* Step 1: Initialize Physical Memory Manager */
   init_pmm();
 
   sbi_puts("Setting up Virtual Memory...\n");
@@ -69,13 +92,19 @@ void kmain(void)
   proc_init();
 
   process_t* proc_A = alloc_proc();
-  load_user_program(proc_A); // Της δίνουμε τον κώδικα
+  if (load_elf(proc_A, _user_elf_start) != 0) {
+      sbi_puts("Failed to load ELF!\n");
+      while(1);
+  } 
 
   process_t* proc_B = alloc_proc();
-  load_user_program(proc_B); // Της δίνουμε τον κώδικα
+  if (load_elf(proc_B, _user_elf_start) != 0) {
+      sbi_puts("Failed to load ELF!\n");
+      while(1);
+  } 
 
   current_proc = proc_A;
-  current_proc->state = PROC_RUNNING; // Της λέμε ότι αυτή τρέχει
+  current_proc->state = PROC_RUNNING; 
 
   satp_val = (8ULL << 60) | ((uintptr_t)current_proc->page_table >> 12);
     

@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks the transition through **Phase 3 (Process Abstraction & Isolation)**.
+This repository currently tracks the transition through **Phase 4 (Preemptive Multitasking & ELF Loading)**.
 
 ---
 
@@ -26,34 +26,31 @@ The long-term vision is a kernel suitable for a **single-user, local-first works
 
 This is a learning-driven but serious systems project, with correctness and clarity prioritized over speed of development.
 
----
 ## Current Status
 
-The project has successfully transitioned from single-tasking to a multi-process architecture with full hardware isolation. Each process executes in its own isolated virtual address space with strict privilege boundaries.
+The project has successfully evolved into a **Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU with zero software trust boundaries.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
-- Boot via **OpenSBI**
-- Custom linker script & Assembly entry point
-- `kmain` executing successfully in **Supervisor mode**
-- Console output via SBI
-- Full S-mode Trap/Exception handling with register preservation
-- **Physical Memory Manager (Bitmap-based, 4KB frame granularity)**
-- **Virtual Memory Manager (Sv39 Paging, 3-level radix tree)**
-- **Hardware-enforced process isolation via per-process page tables**
-- **Process Control Block (`process_t`) with private Root Page Tables and Kernel Stacks**
-- **Pure Assembly Context Switching (`switch.S`) with satp swaps and TLB flushes**
-- **User-space payload loading at standardized virtual address `0x400000`**
-- **W^X Protection (Kernel Stacks non-executable and user-inaccessible)**
-- **Hardware Fault Interception (killing illegal U-mode operations like dereferencing null)**
+- Boot via **OpenSBI** (M-mode firmware)
+- Full S-mode Trap/Exception handling with register preservation and interrupt routing
+- **Physical Memory Manager** (Bitmap-based, 4KB frame granularity, 128MB tracked)
+- **Virtual Memory Manager** (Sv39 Paging, 3-level radix tree, full RAM identity mapping in kernel space)
+- **Preemptive Round-Robin Scheduler** (Timer-driven context switching, ~10ms quanta on QEMU virt)
+- **ELF64 Executable Loader** (Complete header parsing, `PT_LOAD` segment mapping, permission enforcement, BSS zeroing)
+- **Independent C User-Space Programs** (Freestanding compilation, real C code in user-mode, isolated syscall ABI)
+- **Hardware-enforced Process Isolation** (Per-process Root Page Tables, independent virtual address spaces, strict MMU-mediated privilege)
+- **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_ZOMBIE` states)
+- **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
 
-### Current Focus: Phase 4 - Concurrency & Loaders
-With process isolation rock solid, Lazux is transitioning to a concurrent operating system.
+### Current Focus: Phase 5 - Dynamic Loading & File I/O
+With preemptive multitasking and ELF loading stabilized, the immediate priority is expanding system capabilities beyond embedded payloads.
 
-The immediate next steps involve:
-- Interfacing with the RISC-V timer via SBI.
-- Implementing a Preemptive Scheduler (Round-Robin) to context-switch between multiple processes.
-- Building an ELF parser to dynamically load standard compiled executables instead of embedded raw binaries.
+The next steps involve:
+- Implementing a simple filesystem abstraction or RAMDISK loader for dynamic ELF loading from storage.
+- Expanding the syscall ABI: `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for file operations.
+- Adding user-space heap support via `SYS_SBRK` for dynamic memory allocation in user programs.
+- Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).
 
 ---
 
