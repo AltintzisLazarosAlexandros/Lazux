@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks the transition through **Phase 4 (Preemptive Multitasking & ELF Loading)** with comprehensive code documentation for educational clarity and maintainability.
+This repository currently tracks **Phase 4 (Preemptive Multitasking & ELF Loading) COMPLETE** with comprehensive code documentation for educational clarity and maintainability.
 
 ---
 
@@ -28,7 +28,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-The project has successfully evolved into a **Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU with zero software trust boundaries.
+✅ **Phase 4 Complete:** The project has successfully evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU with zero software trust boundaries. Fork syscall working with proper parent/child distinction, timer-based scheduling verified at 10ms intervals, and dual ELF support for runtime program loading.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -42,7 +42,10 @@ What exists so far:
 - **Hardware-enforced Process Isolation** (Per-process Root Page Tables, independent virtual address spaces, strict MMU-mediated privilege)
 - **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_ZOMBIE` states)
 - **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
-- **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, and design rationale)
+- **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
+- **Dual ELF Binary Embedding** (Both user/init.elf and user/test2.elf embedded in kernel; SYS_EXEC(0) loads main.c, SYS_EXEC(1) loads test2.c)
+- **Verified Process Forking** (Both processes execute independently with separate page tables, proper CPU scheduling via 10ms timer quanta)
+- **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, design rationale, and fork/exec mechanisms)
 
 ### Current Focus: Phase 5 - Dynamic Loading & File I/O
 With preemptive multitasking and ELF loading stabilized, the immediate priority is expanding system capabilities beyond embedded payloads.

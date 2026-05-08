@@ -23,7 +23,18 @@
  * returns: 0 (exit code, unused in current implementation)
  */
 int main() {
-    puts("Hello from the pristine Lazux Standard Library!\n");
-    puts("Look Ma, no Assembly!\n");
-    return 0; 
+    puts("Lazux Shell Started!\n");
+    int pid = fork();
+    
+    if (pid == 0) {
+        exec(1);
+    } else {
+        int dead_child = wait();
+        
+        puts("Lazux Shell: Child process with PID ");
+        putint(dead_child);
+        puts(" has finished.\nShell is sleeping forever.\n");
+        
+    }
+    return 0;
 }

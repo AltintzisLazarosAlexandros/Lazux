@@ -306,6 +306,11 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
  * ensuring all processes get equal CPU time over time.
  */
 trap_frame_t* schedule(trap_frame_t* inter_tf){
+	sbi_puts("[schedule] Called, current_proc pid=");
+	if(current_proc) puthex(current_proc->pid);
+	else sbi_puts("(null)");
+	sbi_puts("\n");
+	
 	/* If no process yet created: kernel running, keep current state */
 	if(current_proc == 0){
 		return inter_tf;
@@ -345,6 +350,7 @@ trap_frame_t* schedule(trap_frame_t* inter_tf){
 		/* Current process still available? Run it again */
 		if (current_proc->state == PROC_READY || current_proc->state == PROC_RUNNING) {
            		current_proc->state = PROC_RUNNING;
+            		sbi_puts("[schedule] No other ready, keeping current proc\n");
             		return inter_tf; /* Keep current process */
         	}
 		/* No processes ready: all have exited */

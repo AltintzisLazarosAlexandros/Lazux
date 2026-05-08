@@ -33,6 +33,7 @@ typedef enum{
 	PROC_UNUSED,     /* Slot not in use; can be reused */
 	PROC_READY,      /* Process ready to run (waiting in scheduler queue) */
 	PROC_RUNNING,    /* Currently executing on CPU */
+	PROC_BLOCKED,     /* Waiting for some event (e.g., I/O) */
 	PROC_ZOMBIE      /* Exited but not cleaned up (future feature) */
 }proc_state;
 
@@ -51,6 +52,7 @@ typedef struct{
 	void *kernel_stack;      /* Physical address of kernel stack (isolated from user) */
 
 	trap_frame_t trap_frame; /* CPU register snapshot (saved when entering kernel) */
+	int parent_pid;	   /* PID of parent process (for wait/exit handling) */
 }process_t;
 
 /* Function declarations */
@@ -59,3 +61,4 @@ process_t* alloc_proc(void);                               /* Allocate a new pro
 int load_elf(process_t* p, const uint8_t *elf_data);      /* Load ELF binary into process memory */
 trap_frame_t* schedule(trap_frame_t* inter_tf);           /* Scheduler: select next process to run */
 void free_proc(process_t* p);                                  /* Free process resources */
+void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level); /* Copy user memory for fork */

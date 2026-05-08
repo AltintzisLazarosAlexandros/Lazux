@@ -70,3 +70,11 @@ void puts(const char *str);
  *       or return from main() which is caught by start.S bootstrap.
  */
 void exit(int code);
+
+int fork(void); /* Create child process (returns child's PID to parent, 0 to child) */
+
+int exec(int prog_id); /* Replace current process's memory with new program (prog_id) */
+
+int wait(void); /* Wait for child process to exit */
+
+void putint(int num); /* Output integer as decimal string (for debugging) */

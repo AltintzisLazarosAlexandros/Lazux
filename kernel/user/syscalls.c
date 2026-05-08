@@ -95,3 +95,113 @@ void exit(int code) {
     );
     while(1);               /* Infinite loop (defensive; should never reach) */
 }
+
+/*
+ * fork() - Create a new child process (SYS_FORK = 3)
+ * 
+ * Semantics: Parent receives child PID, child receives 0. Both resume at
+ * same instruction with independent virtual address spaces.
+ * 
+ * Assembly: li a7,3 (syscall ID) → ecall (trap) → mv %0,a0 (capture return)
+ * The "=r"(ret) output constraint tells compiler to move a0 into ret variable.
+ * 
+ * Returns: child PID (parent) | 0 (child) | -1 (error)
+ */
+int fork(void) {
+    int ret;
+    __asm__ volatile (
+        "li a7, 3\n"          /* a7 = 3 (SYS_FORK) */
+        "ecall\n"             /* Trap to kernel; kernel sets a0 based on process */
+        "mv %0, a0"           /* Capture kernel's return value into ret */
+        : "=r" (ret)          /* Output: a0 → ret */
+        :                      /* No inputs */
+        : "memory"            /* Memory may change (page table copy) */
+    );
+    return ret;               /* Parent gets child PID, child gets 0 */
+}
+
+/*
+ * exec() - Load and execute alternative ELF program (SYS_EXEC = 4)
+ * 
+ * Replaces current process image (code, data, entry point) without creating
+ * new process. Same PID, new program. Does NOT return on success.
+ * 
+ * Phase 4: Two ELF binaries embedded in kernel:
+ *   prog_id=0: user/init.elf (main.c)
+ *   prog_id=1: user/test2.elf (test2.c)
+ * 
+ * Phase 5: Will support dynamic loading from filesystem.
+ * 
+ * Returns: -1 (error) | never returns (success - execution at new entry point)
+ */
+int exec(int prog_id) {
+    int ret;
+    __asm__ volatile (
+        "li a7, 4\n"          /* a7 = 4 (SYS_EXEC) */
+        "mv a0, %0\n"         /* a0 = prog_id (which ELF to load) */
+        "ecall\n"             /* Trap to kernel; kernel loads ELF and transfers */
+        "mv %0, a0"           /* Capture return (only on error) */
+        : "=r" (ret)          /* Output: a0 → ret */
+        : "r" (prog_id)       /* Input: prog_id via register */
+        : "a0", "a7", "memory" /* Clobbered: registers and memory */
+    );
+    return ret;               /* Returns -1 on error; success never returns */
+}
+
+/*
+ * wait() - Wait for child process to terminate (SYS_WAIT = 5)
+ * 
+ * Blocks until any child process exits. Returns child's PID.
+ * Currently unused in Phase 4 (processes run independently).
+ * Reserved for Phase 5 parent-child process management.
+ * 
+ * Returns: child PID on success | -1 if no children
+ */
+int wait(void) {
+    int ret;
+    __asm__ volatile (
+        "li a7, 5\n"          /* a7 = 5 (SYS_WAIT) */
+        "ecall\n"             /* Trap to kernel */
+        "mv %0, a0"           /* Capture return value */
+        : "=r" (ret)          /* Output */
+        :                      /* No inputs */
+        : "a0", "a7", "memory" /* Clobbered */
+    );
+    return ret;
+}
+
+/*
+ * putint() - Output integer as decimal string
+ * 
+ * Converts int to digits, builds in buffer (reverse), prints forward.
+ * Handles negative numbers with '-' prefix.
+ * 
+ * Note: Uses local buffer (max 16 digits for int32_t).
+ */
+void putint(int num) {
+    if (num == 0) {
+        putchar('0');
+        return;
+    }
+
+    if (num < 0) {
+        putchar('-');
+        num = -num;
+    }
+
+    char buffer[16];
+    int i = 0;
+
+    /* Extract digits in reverse (least significant first) */
+    while (num > 0) {
+        buffer[i] = (num % 10) + '0'; 
+        num = num / 10;
+        i++;
+    }
+
+    /* Print digits in forward order (most significant first) */
+    while (i > 0) {
+        i--;
+        putchar(buffer[i]);
+    }
+}

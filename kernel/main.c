@@ -97,11 +97,11 @@ void kmain(void)
       while(1);
   } 
 
-  process_t* proc_B = alloc_proc();
-  if (load_elf(proc_B, _user_elf_start) != 0) {
-      sbi_puts("Failed to load ELF!\n");
-      while(1);
-  } 
+  // process_t* proc_B = alloc_proc();
+  // if (load_elf(proc_B, _user_elf_start) != 0) {
+  //     sbi_puts("Failed to load ELF!\n");
+  //     while(1);
+  // } 
 
   current_proc = proc_A;
   current_proc->state = PROC_RUNNING; 

@@ -195,3 +195,75 @@ void vmm_free_pt(page_table_t *root)
 	free_page_table(root, 2);
 	pmm_free_page(root);
 }
+
+
+void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
+{
+    for (int i = 0; i < 512; i++) {
+        /* Shield kernel memory: only copy user-space mappings (VPN[2] < 256) */
+        if (level == 2 && i > 0)
+            continue;
+
+        pte_t pte = parent_pt->pte_entries[i];
+
+        if (!(pte & PTE_V))
+            continue;
+
+        int is_leaf = (pte & PTE_R) || (pte & PTE_W) || (pte & PTE_X);
+
+        if (is_leaf) {
+            /*
+             * Leaf PTE: points to an actual page, not an intermediate table.
+             *
+             * If it's a user page (PTE_U set): deep-copy the physical page so
+             * parent and child have independent memory.  This is what makes
+             * fork() correct — writes by one process don't affect the other.
+             *
+             * If PTE_U is NOT set it's a kernel-mapped leaf (e.g. MMIO or a
+             * kernel identity-mapped page that somehow ended up below VPN[2]=256,
+             * which shouldn't happen with your layout, but guard it anyway).
+             * Skip it — the child should never inherit kernel leaf mappings.
+             */
+            if (!(pte & PTE_U))
+                continue;
+
+            void *new_page = pmm_alloc_page();
+            if (new_page == 0) {
+                sbi_puts("PANIC: vmm_copy_uvm out of memory!\n");
+                while (1);
+            }
+            memcpy(new_page, (void *)PTE_TO_PA(pte), 4096);
+            /* For leaf pages, copy all permission flags (R/W/X/U/A/D) to child */
+            child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)new_page) | (pte & 0x3FF);
+        } else {
+            /*
+             * Intermediate PTE: no R/W/X bits means this points to the next
+             * level of the page table, not to user data.
+             * Allocate a fresh intermediate table for the child and recurse.
+             */
+            if (level == 0) {
+                /*
+                 * level==0 with no R/W/X should never happen in a well-formed
+                 * Sv39 table (level-0 PTEs must be leaves).  Halt rather than
+                 * silently corrupt memory.
+                 */
+                sbi_puts("PANIC: vmm_copy_uvm: invalid non-leaf PTE at level 0!\n");
+                while (1);
+            }
+
+            page_table_t *next_parent = (page_table_t *)PTE_TO_PA(pte);
+            page_table_t *next_child  = (page_table_t *)pmm_alloc_page();
+            if (next_child == 0) {
+                sbi_puts("PANIC: vmm_copy_uvm out of memory!\n");
+                while (1);
+            }
+            memset(next_child, 0, 4096);
+
+            /* For intermediate tables, preserve only V bit and maybe A/D/G (not R/W/X/U) */
+            uint64_t intermediate_flags = pte & (PTE_V | PTE_A | PTE_D | PTE_G);
+            child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)next_child) | intermediate_flags;
+
+            vmm_copy_uvm(next_parent, next_child, level - 1);
+        }
+    }
+}
