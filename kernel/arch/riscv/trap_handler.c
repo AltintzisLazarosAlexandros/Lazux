@@ -186,7 +186,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             /* Mark process as UNUSED (no longer runnable) */
             current_proc->state = PROC_UNUSED;
-            
+            free_proc(current_proc); /* Free process resources */
             /* 
              * Schedule next process to run.
              * Returns new process's trapframe, effectively context-switching away.

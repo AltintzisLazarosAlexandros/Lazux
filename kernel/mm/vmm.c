@@ -22,6 +22,29 @@
 #include "pmm.h"
 #include "string.h"
 
+static void free_page_table(page_table_t *pt, int level)
+{
+	for(int i = 0; i < 512; i++){
+		pte_t pte = pt->pte_entries[i];
+
+		if(pte & PTE_V){
+			if((pte & PTE_R) || (pte & PTE_W) || (pte & PTE_X)){
+				if(pte & PTE_U){
+					pmm_free_page((void *)PTE_TO_PA(pte));
+				}
+			}else{
+				if(level > 0){
+					page_table_t *next_pt = (page_table_t *)PTE_TO_PA(pte);
+                    			free_page_table(next_pt, level - 1);
+                    
+                    			pmm_free_page(next_pt);
+				}
+			}
+		}
+	}
+
+}
+
 /*
  * map_page() - Map virtual address to physical address in page table
  * 
@@ -165,4 +188,10 @@ void vmm_map_kernel(page_table_t* pt) {
             while(1);
         }
     }
+}
+
+void vmm_free_pt(page_table_t *root)
+{
+	free_page_table(root, 2);
+	pmm_free_page(root);
 }

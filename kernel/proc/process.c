@@ -382,3 +382,20 @@ trap_frame_t* schedule(trap_frame_t* inter_tf){
 	/* Return next process's trapframe for sret to execute */
 	return &current_proc->trap_frame;
 }
+
+void free_proc(process_t* p) {
+	if(p == 0 || p->state == PROC_UNUSED) return;
+
+	if(p->kernel_stack) {
+		pmm_free_page(p->kernel_stack);
+		p->kernel_stack = 0;
+	}
+
+	if(p->page_table) {
+		pmm_free_page(p->page_table);
+		p->page_table = 0;
+	}
+
+	p->state = PROC_UNUSED;
+	p->pid = 0;
+}

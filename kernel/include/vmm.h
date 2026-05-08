@@ -79,3 +79,4 @@ typedef struct
 /* Function declarations */
 int map_page(page_table_t *root, uintptr_t va, uintptr_t pa, uint64_t flags);
 void vmm_map_kernel(page_table_t* pt);
+void vmm_free_pt(page_table_t *root);

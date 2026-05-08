@@ -209,6 +209,88 @@ Successfully implemented preemptive round-robin scheduling driven by hardware ti
 
 ---
 
+## 08-05-2026 — Phase 4 Documentation: Comprehensive Code Commentary
+
+### Summary
+Completed comprehensive documentation of all Phase 4 kernel code. Added detailed, explanatory comments to 20 kernel source files, creating a self-documenting codebase suitable for educational purposes and future maintainability.
+
+### Completed Files (20 Total)
+
+**Core Boot & Entry (3 files):**
+- `main.c` - Kernel entry point (kmain orchestration, 5-step init sequence)
+- `arch/riscv/entry.S` - CPU boot and early initialization
+- `arch/riscv/cpu.c` - CPU utilities (read_time CSR access)
+
+**Memory Management (4 files):**
+- `mm/pmm.c` - Physical page allocator (bitmap algorithm, protected regions)
+- `mm/vmm.c` - Virtual page table operations (Sv39 3-level walk, dynamic allocation)
+- `include/pmm.h` - PMM interface, constants, and macros
+- `include/vmm.h` - Sv39 paging macros, PTE structures, VPN extraction
+
+**Trap/Exception Handling (3 files):**
+- `arch/riscv/trap.S` - Assembly trap entry (full register save/restore, CSR handling)
+- `arch/riscv/trap_handler.c` - Exception/interrupt dispatcher (scause routing, syscall handling)
+- `include/trap_header.h` - Trapframe structure (all 31 GPRs + 4 CSRs documented)
+
+**Process Management (2 files):**
+- `proc/process.c` - Process creation, ELF loading, round-robin scheduling
+- `include/proc.h` - Process control block, state machine, structures
+
+**Context Switching (1 file):**
+- `arch/riscv/switch.S` - Assembly switch to user-mode (satp swap, TLB flush, sret)
+
+**User-Space (2 files):**
+- `user/main.c` - User program entry (syscall wrappers, main function)
+- `user/start.S` - User bootstrap (_start, main call, SYS_EXIT)
+
+**Binary & Payload (1 file):**
+- `arch/riscv/payload.S` - Embed user program in kernel via .incbin
+
+**System Interface & Utilities (4 files):**
+- `arch/riscv/sbi.c` - OpenSBI interface (console I/O, timer setup, ecall mechanism)
+- `include/sbi.h` - SBI function declarations with detailed parameter documentation
+- `lib/string.c` - Memory utilities (memset for BSS/page tables, memcpy for segments)
+- `include/string.h` - String function declarations with use case documentation
+
+**User-Space System Calls (2 new files):**
+- `user/lazux.h` - User-space standard library interface (putchar, puts, exit)
+- `user/syscalls.c` - System call implementations with trap flow documentation
+
+**Build System (2 files):**
+- `Makefile` - Complete build configuration with 20+ section explanations
+- `linker.ld` - Memory layout with section placement rationale and symbol exports
+
+### Documentation Quality
+- **File headers:** Purpose, scope, and design rationale
+- **Function documentation:** Clear explanation of arguments, return values, and usage patterns
+- **Algorithm explanations:** Detailed walkthroughs of complex operations (page table walks, scheduling loops)
+- **Register/CSR documentation:** RISC-V-specific register purposes and bit layouts
+- **Data structure documentation:** Struct field meanings and relationships
+- **Inline comments:** Complex operations explained line-by-line
+- **Usage examples:** Practical kernel code patterns
+
+### Total Documentation: ~1,800+ lines
+- Architecture-level design explanations
+- Function-level documentation
+- Algorithm and register mechanics
+- Build system configuration explanation
+- Trap flow and context switch explanations
+- Memory layout and section placement rationale
+
+### Impact
+- **Educational:** Code is now self-documenting for understanding kernel internals
+- **Maintainability:** Future developers can quickly understand Phase 4 architecture
+- **Phase 5 Readiness:** Clear foundation for implementing new features (filesystem, expanded syscalls, heap management)
+- **Code Quality:** Comments explain non-obvious design decisions and potential pitfalls
+
+### Technical Notes
+- Comments prioritize clarity over conciseness
+- Explanations bridge high-level architecture with low-level implementation details
+- RISC-V-specific concepts (privilege modes, CSRs, paging) fully explained
+- Build system rationale documented for future build system evolution
+
+---
+
 ## Phase 5: Expansions (Planned)
 
 ### Focus Areas

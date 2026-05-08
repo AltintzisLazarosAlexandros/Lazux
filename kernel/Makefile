@@ -1,10 +1,10 @@
-/*
- * Makefile - Build system for Lazux RISC-V microkernel
- * 
- * Compiles kernel and user program to ELF64 binaries.
- * Embeds user program into kernel; kernel loader extracts and executes it.
- * Supports QEMU virt platform emulation.
- */
+
+#  Makefile - Build system for Lazux RISC-V microkernel
+ 
+#  Compiles kernel and user program to ELF64 binaries.
+#  Embeds user program into kernel; kernel loader extracts and executes it.
+#  Supports QEMU virt platform emulation.
+
 
 # ============================================================================
 # TOOLCHAIN CONFIGURATION
@@ -105,8 +105,8 @@ OBJS = \
 # User program is compiled separately with lower address range (0x400000).
 # Then embedded into kernel via payload.o (binary inclusion).
 
-user/init.elf: user/start.S user/main.c
-	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/init.elf user/start.S user/main.c
+user/init.elf: user/start.S user/syscalls.c user/main.c
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/init.elf user/start.S user/syscalls.c user/main.c
 
 # Flag Meanings:
 #   -Wl,-Ttext=0x400000 = Link user program's text section at VA 0x400000

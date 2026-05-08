@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks the transition through **Phase 4 (Preemptive Multitasking & ELF Loading)**.
+This repository currently tracks the transition through **Phase 4 (Preemptive Multitasking & ELF Loading)** with comprehensive code documentation for educational clarity and maintainability.
 
 ---
 
@@ -42,6 +42,7 @@ What exists so far:
 - **Hardware-enforced Process Isolation** (Per-process Root Page Tables, independent virtual address spaces, strict MMU-mediated privilege)
 - **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_ZOMBIE` states)
 - **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
+- **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, and design rationale)
 
 ### Current Focus: Phase 5 - Dynamic Loading & File I/O
 With preemptive multitasking and ELF loading stabilized, the immediate priority is expanding system capabilities beyond embedded payloads.

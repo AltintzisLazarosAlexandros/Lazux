@@ -58,3 +58,4 @@ void proc_init(void);                                      /* Initialize process
 process_t* alloc_proc(void);                               /* Allocate a new process slot */
 int load_elf(process_t* p, const uint8_t *elf_data);      /* Load ELF binary into process memory */
 trap_frame_t* schedule(trap_frame_t* inter_tf);           /* Scheduler: select next process to run */
+void free_proc(process_t* p);                                  /* Free process resources */

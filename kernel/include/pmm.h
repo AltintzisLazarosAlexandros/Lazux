@@ -77,7 +77,7 @@ extern uint8_t __user_end[];
  */
 void init_pmm(void);
 
-/*
+/**
  * pmm_alloc_page() - Allocate one free 4KB page
  * 
  * Finds and returns first available free page.
@@ -88,7 +88,7 @@ void init_pmm(void);
  * 
  * Usage:
  *   void *page = pmm_alloc_page();
- *   if (!page) { /* out of memory */ }
+ *   if (!page) {  out of memory  }
  *   memset(page, 0, PAGE_SIZE);  // zero-init the page
  *   map_page(page_table, va, (uintptr_t)page, flags);  // map into VA space
  * 
@@ -97,5 +97,7 @@ void init_pmm(void);
  * - Allocating per-process kernel stacks
  * - Allocating user process memory (segments, stacks)
  * - Any runtime allocation need
- */
+*/
 void *pmm_alloc_page(void);
+
+void pmm_free_page(void *pa);

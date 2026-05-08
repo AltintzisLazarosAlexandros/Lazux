@@ -96,3 +96,14 @@ void *pmm_alloc_page(void)
     /* Convert page index to physical address and return it */
     return pmm_translator(index);
 }
+
+void pmm_free_page(void *pa){
+	uintptr_t p = (uintptr_t)pa;
+
+	if (p < PHYSICAL_RAM_START || p >= PHYSICAL_RAM_START + PHYSICAL_RAM_SIZE) return;
+    	if (p % PAGE_SIZE != 0) return;
+
+	uintptr_t index = (p - PHYSICAL_RAM_START) / PAGE_SIZE;
+
+	bitmap[index / 8] &= ~(1 << (index % 8));
+}
