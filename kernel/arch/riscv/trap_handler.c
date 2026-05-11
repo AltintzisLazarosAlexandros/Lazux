@@ -445,6 +445,46 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             return schedule(tf);
         }
+        case 6: /* SYS_SBRK */
+        {
+            //tf->sepc += 4;
+            intptr_t increment = tf->a0;
+            uintptr_t old_break = current_proc->heap_break;
+            uintptr_t new_break = old_break + increment; 
+            
+            if (increment == 0) {
+                tf->a0 = old_break;
+                return tf;
+            }
+
+            if(increment < 0) {
+                tf->a0 = -1; 
+                return tf;
+            }
+
+            if(new_break > 0x3E000000) {
+                tf->a0 = -1; 
+                return tf;
+            }
+
+            uintptr_t old_page_end = (old_break + 4095) & ~4095;
+            uintptr_t new_page_end = (new_break + 4095) & ~4095;
+            for (uintptr_t addr = old_page_end; addr < new_page_end; addr += 4096) {
+                void *phys_page = pmm_alloc_page();
+                if (!phys_page) {
+                    tf->a0 = -1; // Out of memory
+                    return tf;
+                }
+                memset(phys_page, 0, 4096);
+                
+                uint64_t flags = PTE_U | PTE_R | PTE_W;
+                map_page(current_proc->page_table, addr, (uintptr_t)phys_page, flags);
+            }
+            current_proc->heap_break = new_break;
+            tf->a0 = old_break;
+            
+            return tf;
+        }
         default: /* Unknown syscall: kernel error */
             sbi_puts("\n[kernel] unknown syscall, killing user\n");
             for (;;) {}

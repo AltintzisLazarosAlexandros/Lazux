@@ -1,5 +1,7 @@
 // user/syscall.c
 #include "lazux.h"
+#include <stdint.h>
+#include <stdarg.h>
 /*
  * putchar() - Output single character via syscall
  * 
@@ -204,4 +206,138 @@ void putint(int num) {
         i--;
         putchar(buffer[i]);
     }
+}
+
+/*
+ * putptr() - Output pointer address as hexadecimal (0x...)
+ *
+ * Prints a pointer-sized value in hex using a fixed-width format based on
+ * the platform pointer size. Useful for debugging addresses (e.g. heap break).
+ */
+void putptr(const void *ptr) {
+    uintptr_t value = (uintptr_t)ptr;
+    const char *hex = "0123456789abcdef";
+    int digits = (int)(sizeof(uintptr_t) * 2);
+
+    puts("0x");
+
+    /* Print fixed-width hex (e.g., 16 digits on RV64) */
+    for (int i = digits - 1; i >= 0; i--) {
+        unsigned int nibble = (unsigned int)((value >> (i * 4)) & 0xF);
+        putchar(hex[nibble]);
+    }
+}
+
+static void print_uint(unsigned int value) {
+    char buffer[16];
+    int i = 0;
+
+    if (value == 0) {
+        putchar('0');
+        return;
+    }
+
+    while (value > 0) {
+        buffer[i++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+
+    while (i > 0) {
+        putchar(buffer[--i]);
+    }
+}
+
+static void print_hex(unsigned int value) {
+    char buffer[16];
+    int i = 0;
+    const char *hex = "0123456789abcdef";
+
+    if (value == 0) {
+        putchar('0');
+        return;
+    }
+
+    while (value > 0) {
+        buffer[i++] = hex[value & 0xF];
+        value >>= 4;
+    }
+
+    while (i > 0) {
+        putchar(buffer[--i]);
+    }
+}
+
+int printf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    for (const char *p = fmt; *p != '\0'; p++) {
+        if (*p != '%') {
+            putchar(*p);
+            continue;
+        }
+
+        p++;
+        if (*p == '\0') {
+            break;
+        }
+
+        switch (*p) {
+        case '%':
+            putchar('%');
+            break;
+        case 'c':
+            putchar((char)va_arg(args, int));
+            break;
+        case 's': {
+            const char *s = va_arg(args, const char *);
+            if (s == 0) {
+                puts("(null)");
+            } else {
+                puts(s);
+            }
+            break;
+        }
+        case 'd': {
+            int v = va_arg(args, int);
+            if (v < 0) {
+                putchar('-');
+                print_uint((unsigned int)(-v));
+            } else {
+                print_uint((unsigned int)v);
+            }
+            break;
+        }
+        case 'u':
+            print_uint(va_arg(args, unsigned int));
+            break;
+        case 'x':
+            print_hex(va_arg(args, unsigned int));
+            break;
+        case 'p':
+            putptr(va_arg(args, const void *));
+            break;
+        default:
+            putchar('%');
+            putchar(*p);
+            break;
+        }
+    }
+
+    va_end(args);
+    return 0;
+}
+
+void* sbrk(int increment) {
+    void* ret;
+    __asm__ volatile (
+        "li a7, 6\n"          /* a7 = 6 (SYS_SBRK) */
+        "mv a0, %1\n"         /* a0 = increment (heap size change) */
+        "ecall\n"             /* Trap to kernel */
+        "mv %0, a0"           /* Capture return value (previous break) */
+        : "=r" (ret)          /* Output: a0 → ret */
+        : "r" (increment)     /* Input: increment via register */
+        : "a0", "a7", "memory" /* Clobbered */
+    );
+    return ret;               /* Returns previous end of heap on success */
 }

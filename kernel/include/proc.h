@@ -53,6 +53,8 @@ typedef struct{
 
 	trap_frame_t trap_frame; /* CPU register snapshot (saved when entering kernel) */
 	int parent_pid;	   /* PID of parent process (for wait/exit handling) */
+
+	uintptr_t heap_break; /* Current end of heap (for sbrk/brk system calls) */
 }process_t;
 
 /* Function declarations */

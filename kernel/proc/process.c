@@ -196,6 +196,7 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
      * Iterate through program headers (each describes one segment).
      * e_phnum = number of program headers.
      */
+	uintptr_t max_end = 0;
     for (int i = 0; i < ehdr->e_phnum; i++) {
         
         /* Only load PT_LOAD segments (loadable code/data) */
@@ -246,6 +247,10 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
                 uint64_t flags = PTE_U | PTE_R | PTE_W | PTE_X;
                 map_page(p->page_table, vaddr + current_offset, (uintptr_t)phys_page, flags);
             }
+			uintptr_t segment_end = vaddr + size;
+            if (segment_end > max_end) {
+                max_end = segment_end;
+            }
         }
     }
 
@@ -277,8 +282,10 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
     
     /* Initialize user stack pointer (sp register) to top of stack */
     p->trap_frame.sp = 0x40000000; 
-
-    return 0;
+	
+	p->heap_break = (max_end + 4095) & ~4095;
+    
+	return 0;
 }
 
 /*

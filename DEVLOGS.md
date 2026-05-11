@@ -444,12 +444,6 @@ I am the Parent!
 - Added Makefile dependency documentation for dual ELF linking
 - All syscall implementations now include trap mechanism explanation
 
-### Known Limitations (Non-Blocking for Phase 4)
-- `vmm_copy_uvm()` hangs with test2.c as init.elf (only when using test2.c as primary boot program)
-- **Workaround:** Use main.c as primary boot program (current default)
-- **Impact:** test2.c can still be loaded via SYS_EXEC(1), only static boot is affected
-- **Root Cause:** Not yet identified; likely edge case in recursive page table walk with specific memory layout
-
 ### Phase 4 Status: ✅ COMPLETE
 
 All core multitasking features verified working:
@@ -480,3 +474,22 @@ Phase 5 will expand the kernel and user-space capabilities with file I/O, dynami
 - **Expanded Syscall ABI:** Implement `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for basic file operations; route I/O operations through the kernel's file abstraction layer.
 - **User-Space Heap Management:** Add `SYS_SBRK` syscall to allow user programs to dynamically expand heap memory; coordinate with PMM to allocate physical pages on-demand.
 - **Asynchronous I/O & Interactivity:** Implement UART/Keyboard interrupt handlers to support interactive shell-like capabilities; decouple I/O completion from blocking syscalls using event-driven patterns or wait queues.
+
+---
+
+## 11-05-2026 — Phase 5: User Heap Growth and Minimal printf
+
+### Summary
+Started Phase 5 by adding user-space heap growth via `SYS_SBRK` and introducing a minimal `printf` for formatted output in user programs. This enables dynamic allocation tests and cleaner debug logging from user-space without adding full libc.
+
+### Implemented
+- **SYS_SBRK syscall (kernel):** Added syscall handler that tracks `heap_break`, expands user heap by mapping new pages, and returns the previous break.
+- **Heap tracking in process:** `heap_break` is initialized from the maximum ELF segment end and advanced on `sbrk()` calls.
+- **User-space `sbrk()` wrapper:** Added syscall wrapper to request heap growth or query the current break.
+- **Minimal `printf` in user space:** Implemented formatted output with `%s`, `%c`, `%d`, `%u`, `%x`, `%p`, and `%%` using the existing syscall-based `putchar()`.
+- **Pointer-safe printing:** Added `putptr()` for hex address output and wired `%p` to it in `printf`.
+- **User program updates:** `main.c` and `test2.c` now use `printf` for clearer diagnostics.
+
+### Notes
+- This is a minimal formatter intended for kernel and user debugging, not a full libc replacement.
+- Heap growth is intentionally simple (monotonic). Reclaim and guard regions are deferred.

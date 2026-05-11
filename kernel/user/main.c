@@ -23,7 +23,7 @@
  * returns: 0 (exit code, unused in current implementation)
  */
 int main() {
-    puts("Lazux Shell Started!\n");
+    printf("Lazux Shell Started!\n");
     int pid = fork();
     
     if (pid == 0) {
@@ -31,9 +31,8 @@ int main() {
     } else {
         int dead_child = wait();
         
-        puts("Lazux Shell: Child process with PID ");
-        putint(dead_child);
-        puts(" has finished.\nShell is sleeping forever.\n");
+        printf("Lazux Shell: Child process with PID %d has finished.\n", dead_child);
+        printf("Shell is sleeping forever.\n");
         
     }
     return 0;

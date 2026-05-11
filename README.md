@@ -28,7 +28,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-✅ **Phase 4 Complete:** The project has successfully evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU with zero software trust boundaries. Fork syscall working with proper parent/child distinction, timer-based scheduling verified at 10ms intervals, and dual ELF support for runtime program loading.
+✅ **Phase 4 Complete** and **Phase 5 in progress:** The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 work has begun with user-space heap growth (`SYS_SBRK`) and a minimal user-space `printf` for formatted output.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -45,6 +45,8 @@ What exists so far:
 - **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
 - **Dual ELF Binary Embedding** (Both user/init.elf and user/test2.elf embedded in kernel; SYS_EXEC(0) loads main.c, SYS_EXEC(1) loads test2.c)
 - **Verified Process Forking** (Both processes execute independently with separate page tables, proper CPU scheduling via 10ms timer quanta)
+- **User-Space Heap Growth** (`SYS_SBRK` syscall and `sbrk()` wrapper for dynamic memory allocation)
+- **Minimal User-Space printf** (Formatted output with `%s`, `%c`, `%d`, `%u`, `%x`, `%p`, `%%`)
 - **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, design rationale, and fork/exec mechanisms)
 
 ### Current Focus: Phase 5 - Dynamic Loading & File I/O
@@ -53,7 +55,7 @@ With preemptive multitasking and ELF loading stabilized, the immediate priority 
 The next steps involve:
 - Implementing a simple filesystem abstraction or RAMDISK loader for dynamic ELF loading from storage.
 - Expanding the syscall ABI: `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for file operations.
-- Adding user-space heap support via `SYS_SBRK` for dynamic memory allocation in user programs.
+- Extending heap support beyond `SYS_SBRK` (heap limits, reclaim, and safety checks).
 - Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).
 
 ---

@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 /*
  * putchar() - Output single character to console
  * 
@@ -78,3 +80,9 @@ int exec(int prog_id); /* Replace current process's memory with new program (pro
 int wait(void); /* Wait for child process to exit */
 
 void putint(int num); /* Output integer as decimal string (for debugging) */
+
+void putptr(const void *ptr); /* Output pointer address in hex (0x...) */
+
+int printf(const char *fmt, ...); /* Minimal printf: %s %c %d %u %x %p %% */
+
+void* sbrk(int increment); /* Increase heap size by increment bytes, return previous end of heap */
