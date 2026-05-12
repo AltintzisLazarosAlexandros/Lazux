@@ -464,15 +464,21 @@ All core multitasking features verified working:
 
 ---
 
-## Phase 5: Expansions (Planned)
+## Phase 5: Expansions (In Progress — 50% Milestone Reached)
 
 ### Focus Areas
 Phase 5 will expand the kernel and user-space capabilities with file I/O, dynamic memory, and system call extensions.
 
-### Next Steps (Phase 5)
+### Progress Snapshot (Phase 5)
+- ✅ **User-Space Heap Management:** `SYS_SBRK` and `sbrk()` support are implemented.
+- ✅ **User-Space Formatted Output:** Minimal `printf` path is implemented for process diagnostics.
+- ⏳ **Filesystem/RAMDISK Abstraction:** Pending.
+- ⏳ **Expanded File Syscall ABI (`READ/WRITE/OPEN/CLOSE`):** Pending.
+- ⏳ **Asynchronous I/O & Interactivity:** Pending.
+
+### Next Steps (Remaining 50% of Phase 5)
 - **Filesystem/RAMDISK Abstraction:** Implement a simple in-memory filesystem or RAMDISK loader to allow dynamic loading of ELF binaries from a fixed image (rather than embedding them at link time).
 - **Expanded Syscall ABI:** Implement `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for basic file operations; route I/O operations through the kernel's file abstraction layer.
-- **User-Space Heap Management:** Add `SYS_SBRK` syscall to allow user programs to dynamically expand heap memory; coordinate with PMM to allocate physical pages on-demand.
 - **Asynchronous I/O & Interactivity:** Implement UART/Keyboard interrupt handlers to support interactive shell-like capabilities; decouple I/O completion from blocking syscalls using event-driven patterns or wait queues.
 
 ---
@@ -493,3 +499,14 @@ Started Phase 5 by adding user-space heap growth via `SYS_SBRK` and introducing 
 ### Notes
 - This is a minimal formatter intended for kernel and user debugging, not a full libc replacement.
 - Heap growth is intentionally simple (monotonic). Reclaim and guard regions are deferred.
+
+---
+
+## 12-05-2026 — Phase 5 Halfway Milestone
+
+### Summary
+Marked Phase 5 at the 50% milestone based on completed dynamic-memory user path (`SYS_SBRK`) and minimal user-space formatted output (`printf`), with filesystem-backed loading and file/syscall expansion still pending.
+
+### Milestone Notes
+- Phase 5 execution status is now explicitly tracked as **half complete** in project docs.
+- Remaining work is centered on storage-backed program loading, file descriptor operations, and asynchronous input handling.

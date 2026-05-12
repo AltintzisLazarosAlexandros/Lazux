@@ -329,6 +329,7 @@ int printf(const char *fmt, ...) {
 }
 
 void* sbrk(int increment) {
+    /* Request heap growth (or query with increment=0) via SYS_SBRK. */
     void* ret;
     __asm__ volatile (
         "li a7, 6\n"          /* a7 = 6 (SYS_SBRK) */
@@ -340,4 +341,75 @@ void* sbrk(int increment) {
         : "a0", "a7", "memory" /* Clobbered */
     );
     return ret;               /* Returns previous end of heap on success */
+}
+
+/*
+ * Simple first-fit allocator metadata block.
+ * The user-visible pointer is immediately after this header.
+ */
+typedef struct block_meta {
+    size_t size;
+    struct block_meta* next;
+    int is_free;
+}block_meta_t;
+
+#define META_SIZE sizeof(block_meta_t)
+block_meta_t *global_base = 0;
+
+/* Find a free block of at least size bytes (first-fit). */
+block_meta_t* find_free_block(size_t size, block_meta_t** last){
+    block_meta_t* current = global_base;
+    while(current){
+        if(current->is_free && current->size >= size){
+            return current;
+        }
+        *last = current;
+        current = current->next;
+    }
+    return 0;
+}
+
+/*
+ * malloc() - Simple heap allocator backed by sbrk()
+ * Uses a first-fit free list and extends the heap when needed.
+ */
+void* malloc(size_t size){
+    if (size == 0) return 0;
+
+    block_meta_t* last = 0;
+    block_meta_t* block = find_free_block(size,&last);
+    if (block) {
+        block->is_free = 0;
+        return (void*)(block + 1);
+    }
+
+    size_t total_size = META_SIZE + size;
+    block_meta_t *new_block = (block_meta_t *)sbrk(total_size);
+
+    if ((long)new_block == -1) {
+        return 0; 
+    }
+
+    new_block->size = size;
+    new_block->is_free = 0;
+    new_block->next = 0;
+
+    if (last) {
+        last->next = new_block;
+    } else {
+        global_base = new_block;
+    }
+
+    return (void *)(new_block + 1);
+}
+
+/*
+ * free() - Mark a previously allocated block as free.
+ * No coalescing yet; future improvement could merge adjacent blocks.
+ */
+void free(void* ptr){
+    if (!ptr) return;
+
+    block_meta_t *block = (block_meta_t *)ptr - 1;
+    block->is_free = 1;
 }

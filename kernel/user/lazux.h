@@ -86,3 +86,11 @@ void putptr(const void *ptr); /* Output pointer address in hex (0x...) */
 int printf(const char *fmt, ...); /* Minimal printf: %s %c %d %u %x %p %% */
 
 void* sbrk(int increment); /* Increase heap size by increment bytes, return previous end of heap */
+
+typedef unsigned long size_t;
+
+/* Simple heap allocator backed by SYS_SBRK (first-fit, no coalescing yet). */
+void* malloc(size_t size);
+
+/* Mark a heap block as free (no coalescing yet). */
+void free(void* ptr);
