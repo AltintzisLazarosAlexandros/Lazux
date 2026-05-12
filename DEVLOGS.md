@@ -464,7 +464,7 @@ All core multitasking features verified working:
 
 ---
 
-## Phase 5: Expansions (In Progress — 50% Milestone Reached)
+## Phase 5: Expansions (Complete)
 
 ### Focus Areas
 Phase 5 will expand the kernel and user-space capabilities with file I/O, dynamic memory, and system call extensions.
@@ -472,14 +472,13 @@ Phase 5 will expand the kernel and user-space capabilities with file I/O, dynami
 ### Progress Snapshot (Phase 5)
 - ✅ **User-Space Heap Management:** `SYS_SBRK` and `sbrk()` support are implemented.
 - ✅ **User-Space Formatted Output:** Minimal `printf` path is implemented for process diagnostics.
-- ⏳ **Filesystem/RAMDISK Abstraction:** Pending.
-- ⏳ **Expanded File Syscall ABI (`READ/WRITE/OPEN/CLOSE`):** Pending.
-- ⏳ **Asynchronous I/O & Interactivity:** Pending.
+- ✅ **RAMDISK Abstraction:** `ramdisk.img` embedded and parsed by name at boot/exec.
+- ✅ **RAMDISK Build Tooling:** `mkramdisk` packs ELFs into a single image.
 
-### Next Steps (Remaining 50% of Phase 5)
-- **Filesystem/RAMDISK Abstraction:** Implement a simple in-memory filesystem or RAMDISK loader to allow dynamic loading of ELF binaries from a fixed image (rather than embedding them at link time).
-- **Expanded Syscall ABI:** Implement `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for basic file operations; route I/O operations through the kernel's file abstraction layer.
-- **Asynchronous I/O & Interactivity:** Implement UART/Keyboard interrupt handlers to support interactive shell-like capabilities; decouple I/O completion from blocking syscalls using event-driven patterns or wait queues.
+### Phase 6 Preview
+- **File descriptor syscalls:** `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE`.
+- **Filesystem layer:** RAMDISK-backed file API for lookup and streaming reads.
+- **Async I/O:** UART/keyboard interrupt handling for interactive input.
 
 ---
 
@@ -502,11 +501,17 @@ Started Phase 5 by adding user-space heap growth via `SYS_SBRK` and introducing 
 
 ---
 
-## 12-05-2026 — Phase 5 Halfway Milestone
+## 12-05-2026 — Phase 5 Completion and Phase 6 Kickoff
 
 ### Summary
-Marked Phase 5 at the 50% milestone based on completed dynamic-memory user path (`SYS_SBRK`) and minimal user-space formatted output (`printf`), with filesystem-backed loading and file/syscall expansion still pending.
+Completed Phase 5 by replacing dual-ELF embedding with a RAMDISK image pipeline and switching boot/exec to load ELFs by name from `ramdisk.img`. This decouples the kernel from fixed ELF symbols and prepares the codebase for filesystem-style APIs in Phase 6.
 
-### Milestone Notes
-- Phase 5 execution status is now explicitly tracked as **half complete** in project docs.
-- Remaining work is centered on storage-backed program loading, file descriptor operations, and asynchronous input handling.
+### Implemented
+- **RAMDISK image embedding:** `payload.S` now embeds a single `ramdisk.img` with `_ramdisk_start/_ramdisk_end` symbols.
+- **RAMDISK toolchain:** `mkramdisk` builds the image from `init.elf` and `test2.elf`.
+- **Boot loader update:** `kmain()` loads `init.elf` from the RAMDISK instead of `_user_elf_start`.
+- **SYS_EXEC update:** `SYS_EXEC` now resolves `init.elf`/`test2.elf` via RAMDISK entry lookup.
+- **Documentation updates:** README and DEVLOGS now mark Phase 5 complete and Phase 6 started.
+
+### Phase 6 Starts Here
+Phase 6 focuses on file descriptor syscalls, a RAMDISK-backed filesystem API, and asynchronous I/O.

@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks **Phase 4 (Preemptive Multitasking & ELF Loading) COMPLETE** and **Phase 5 at 50% completion**, with comprehensive code documentation for educational clarity and maintainability.
+This repository currently tracks **Phase 4 (Preemptive Multitasking & ELF Loading) COMPLETE** and **Phase 5 COMPLETE**, with Phase 6 underway.
 
 ---
 
@@ -28,7 +28,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-✅ **Phase 4 Complete** and **Phase 5 halfway complete (50%)**: The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 has delivered user-space heap growth (`SYS_SBRK`) and a minimal user-space `printf` for formatted output.
+✅ **Phase 4 Complete** and **Phase 5 Complete**: The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 delivered user-space heap growth (`SYS_SBRK`), a minimal user-space `printf`, and RAMDISK-backed program loading.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -43,20 +43,20 @@ What exists so far:
 - **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_ZOMBIE` states)
 - **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
 - **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
-- **Dual ELF Binary Embedding** (Both user/init.elf and user/test2.elf embedded in kernel; SYS_EXEC(0) loads main.c, SYS_EXEC(1) loads test2.c)
+- **RAMDISK-Backed Program Loading** (Kernel loads ELFs by name from `ramdisk.img` via `_ramdisk_start`)
 - **Verified Process Forking** (Both processes execute independently with separate page tables, proper CPU scheduling via 10ms timer quanta)
 - **User-Space Heap Growth** (`SYS_SBRK` syscall and `sbrk()` wrapper for dynamic memory allocation)
 - **Minimal User-Space printf** (Formatted output with `%s`, `%c`, `%d`, `%u`, `%x`, `%p`, `%%`)
-- **Phase 5 Progress Marker** (50% milestone reached: heap growth and user-space formatting/debug output completed)
+- **RAMDISK Build Tooling** (`mkramdisk` packs ELFs into `ramdisk.img`)
 - **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, design rationale, and fork/exec mechanisms)
 
-### Current Focus: Phase 5 - Dynamic Loading & File I/O (Remaining 50%)
-With preemptive multitasking and ELF loading stabilized, the immediate priority is completing the remaining Phase 5 capabilities beyond embedded payloads.
+### Current Focus: Phase 6 - Filesystem and I/O Expansion
+With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
 
-Remaining Phase 5 steps involve:
-- Implementing a simple filesystem abstraction or RAMDISK loader for dynamic ELF loading from storage.
-- Expanding the syscall ABI: `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE` for file operations.
-- Extending heap support beyond `SYS_SBRK` (heap limits, reclaim, and safety checks).
+Phase 6 steps involve:
+- Implementing file descriptor syscalls: `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE`.
+- Extending RAMDISK parsing into a basic filesystem API.
+- Adding heap safety improvements (limits, reclaim, and guard regions).
 - Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).
 
 ---

@@ -16,6 +16,7 @@
 #include "string.h"
 #include "proc.h"
 #include "elf.h"
+#include "mkramdisk.h"
 
 /* External symbols from other compilation units */
 extern void trap_entry(void);           /* Assembly trap handler entry point */
@@ -27,7 +28,37 @@ extern void *memset(void *dest, int value, size_t count);    /* Zero/fill memory
 extern uint64_t read_time(void);        /* Read current timer value */
 extern process_t process_table[64];     /* Global process table */
 extern process_t* current_proc;         /* Currently executing process */
-extern uint8_t _user_elf_start[];       /* Embedded user ELF binary in kernel image */
+extern uint8_t _ramdisk_start[];        /* Embedded RAM disk image start */
+extern uint8_t _ramdisk_end[];          /* Embedded RAM disk image end */
+
+static int streq(const char *a, const char *b)
+{
+  while (*a && *b) {
+    if (*a != *b) return 0;
+    a++;
+    b++;
+  }
+  return *a == *b;
+}
+
+static const uint8_t *ramdisk_find(const char *name)
+{
+  const ramdisk_header_t *hdr = (const ramdisk_header_t *)_ramdisk_start;
+  if (hdr->magic != RAMDISK_MAGIC) {
+    return 0;
+  }
+
+  const ramdisk_entry_t *entries = (const ramdisk_entry_t *)
+      (_ramdisk_start + sizeof(ramdisk_header_t));
+
+  for (uint32_t i = 0; i < hdr->num_entries; i++) {
+    if (streq(entries[i].name, name)) {
+      return _ramdisk_start + entries[i].offset;
+    }
+  }
+
+  return 0;
+}
 
 /* Helper: Write trap handler address to stvec CSR (RISC-V Control/Status Reg) */
 static inline void write_stvec(uintptr_t value)
@@ -92,7 +123,8 @@ void kmain(void)
   proc_init();
 
   process_t* proc_A = alloc_proc();
-  if (load_elf(proc_A, _user_elf_start) != 0) {
+  const uint8_t *init_elf = ramdisk_find("init.elf");
+  if (!init_elf || load_elf(proc_A, init_elf) != 0) {
       sbi_puts("Failed to load ELF!\n");
       while(1);
   } 

@@ -201,7 +201,7 @@ void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
 {
     for (int i = 0; i < 512; i++) {
         /* Shield kernel memory: only copy user-space mappings (VPN[2] < 256) */
-        if (level == 2 && i > 0)
+		if (level == 2 && i >= 2)
             continue;
 
         pte_t pte = parent_pt->pte_entries[i];
@@ -259,9 +259,8 @@ void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
             }
             memset(next_child, 0, 4096);
 
-            /* For intermediate tables, preserve only V bit and maybe A/D/G (not R/W/X/U) */
-            uint64_t intermediate_flags = pte & (PTE_V | PTE_A | PTE_D | PTE_G);
-            child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)next_child) | intermediate_flags;
+		    /* For intermediate tables, only the V bit is required. */
+		    child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)next_child) | PTE_V;
 
             vmm_copy_uvm(next_parent, next_child, level - 1);
         }

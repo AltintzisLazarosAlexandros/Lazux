@@ -21,6 +21,7 @@
 #include "trap_header.h"
 #include "sbi.h"
 #include "proc.h"
+#include "mkramdisk.h"
 #include <string.h>
 
 /* Assembly context switch function: swaps virtual address spaces and registers */
@@ -38,15 +39,43 @@ extern process_t* current_proc;
 /* Global trapframe for kernel traps (currently unused in Phase 4) */
 trap_frame_t g_tf;
 
-extern uint8_t _user_elf_start[];
-extern uint8_t _test2_elf_start[];
-extern uint8_t _test2_elf_end[];
+extern uint8_t _ramdisk_start[];
+extern uint8_t _ramdisk_end[];
 extern int load_elf(process_t *p, const uint8_t *elf_data);
 extern void vmm_map_kernel(page_table_t* pt);
 extern void* pmm_alloc_page(void);
 extern void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level);
 extern void vmm_free_pt(page_table_t *root);
 extern void free_proc(process_t *p);
+
+static int streq(const char *a, const char *b)
+{
+    while (*a && *b) {
+        if (*a != *b) return 0;
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
+
+static const uint8_t *ramdisk_find(const char *name)
+{
+    const ramdisk_header_t *hdr = (const ramdisk_header_t *)_ramdisk_start;
+    if (hdr->magic != RAMDISK_MAGIC) {
+        return 0;
+    }
+
+    const ramdisk_entry_t *entries = (const ramdisk_entry_t *)
+        (_ramdisk_start + sizeof(ramdisk_header_t));
+
+    for (uint32_t i = 0; i < hdr->num_entries; i++) {
+        if (streq(entries[i].name, name)) {
+            return _ramdisk_start + entries[i].offset;
+        }
+    }
+
+    return 0;
+}
 /*
  * from_supervisor() - Check if trap came from S-mode (kernel) or U-mode (user)
  * 
@@ -312,21 +341,19 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
         case 4: /* SYS_EXEC: Load and execute alternative user program */
         {
             /*
-             * PHASE 4 SYS_EXEC - Dual ELF Binary Support
+             * PHASE 5 SYS_EXEC - RAMDISK-backed ELF loading
              * 
              * OVERVIEW:
              * Replaces the current process's execution image (code, data, entry point)
              * with a new ELF binary without creating a new process. Same PID, new program.
              * 
-             * PHASE 4 MECHANISM:
-             * Instead of loading from filesystem (deferred to Phase 5), two user programs
-             * are embedded in the kernel binary at link time via payload.S:
-             *   - _user_elf_start: user/init.elf (main.c) - primary boot program
-             *   - _test2_elf_start: user/test2.elf (test2.c) - alternative program
+             * PHASE 5 MECHANISM:
+             * Programs are stored in a ramdisk image embedded in the kernel.
+             * The kernel locates entries by name in the ramdisk header.
              * 
              * SYS_EXEC SYSCALL ARGUMENT (a0 register):
-             *   a0 = 0: Load user/init.elf (main.c)
-             *   a0 = 1: Load user/test2.elf (test2.c)
+             *   a0 = 0: Load init.elf
+             *   a0 = 1: Load test2.elf
              *   a0 = other: Error (-1 return)
              * 
              * IMPLEMENTATION STEPS:
@@ -368,13 +395,9 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              *   - Leave process unchanged
              *   - Process continues with original program
              * 
-             * DUAL ELF RATIONALE:
-             * Phase 4 avoids filesystem complexity by embedding both programs.
-             * This allows:
-             *   - Testing exec without filesystem abstraction
-             *   - Verifying page table swap correctness
-             *   - Confirming entry point jumps work
-             * Phase 5 will add RAMDISK/filesystem for dynamic loading.
+             * RAMDISK RATIONALE:
+             * Decouples the kernel from fixed symbols and enables dynamic
+             * program discovery inside the ramdisk image.
              * 
              * SECURITY NOTE:
              * Currently only kernel-embedded binaries are executable.
@@ -384,11 +407,16 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             sbi_puts("[trap_handler] SYS_EXEC called\n");
             const uint8_t *elf_data = 0;
             
-            if (tf->a0 == 0) elf_data = _user_elf_start;
-            else if (tf->a0 == 1) elf_data = _test2_elf_start;
+            if (tf->a0 == 0) elf_data = ramdisk_find("init.elf");
+            else if (tf->a0 == 1) elf_data = ramdisk_find("test2.elf");
             else {
                 tf->a0 = -1; 
                 tf->sepc += 4;
+                return tf;
+            }
+
+            if (!elf_data) {
+                tf->a0 = -1;
                 return tf;
             }
 
@@ -462,7 +490,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 return tf;
             }
 
-            if(new_break > 0x3E000000) {
+            if(new_break > current_proc->heap_max) {
                 tf->a0 = -1; 
                 return tf;
             }

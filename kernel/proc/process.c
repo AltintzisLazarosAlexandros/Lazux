@@ -244,8 +244,11 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
                  * Flags: user-accessible, readable, writable, executable.
                  * Process can read/write/execute its own segments.
                  */
-                uint64_t flags = PTE_U | PTE_R | PTE_W | PTE_X;
-                map_page(p->page_table, vaddr + current_offset, (uintptr_t)phys_page, flags);
+				uint64_t flags = PTE_U;
+				if (phdr[i].p_flags & PF_R) flags |= PTE_R;
+				if (phdr[i].p_flags & PF_W) flags |= PTE_W;
+				if (phdr[i].p_flags & PF_X) flags |= PTE_X;
+				map_page(p->page_table, vaddr + current_offset, (uintptr_t)phys_page, flags);
             }
 			uintptr_t segment_end = vaddr + size;
             if (segment_end > max_end) {
@@ -280,10 +283,12 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
     uint64_t stack_base = 0x40000000 - 4096;
     map_page(p->page_table, stack_base, (uintptr_t)stack_page, stack_flags);
     
-    /* Initialize user stack pointer (sp register) to top of stack */
-    p->trap_frame.sp = 0x40000000; 
+	/* Initialize user stack pointer (sp register) to top of stack */
+	p->trap_frame.sp = 0x40000000; 
 	
+	/* Heap grows upward from end of loaded segments; cap at stack base. */
 	p->heap_break = (max_end + 4095) & ~4095;
+	p->heap_max = stack_base; /* stack_base is bottom of user stack */
     
 	return 0;
 }
@@ -405,7 +410,7 @@ void free_proc(process_t* p) {
 	}
 
 	if(p->page_table) {
-		pmm_free_page(p->page_table);
+		vmm_free_pt(p->page_table);
 		p->page_table = 0;
 	}
 

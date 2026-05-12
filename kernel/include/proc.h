@@ -55,6 +55,7 @@ typedef struct{
 	int parent_pid;	   /* PID of parent process (for wait/exit handling) */
 
 	uintptr_t heap_break; /* Current end of heap (for sbrk/brk system calls) */
+	uintptr_t heap_max;   /* Upper heap limit (guard against stack/region overlap) */
 }process_t;
 
 /* Function declarations */

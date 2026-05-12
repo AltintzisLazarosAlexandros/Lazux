@@ -16,6 +16,11 @@
 /* Program header type: PT_LOAD = loadable segment (code/data) */
 #define PT_LOAD 1
 
+/* Program header flags: PF_X/PF_W/PF_R describe segment permissions */
+#define PF_X 0x1
+#define PF_W 0x2
+#define PF_R 0x4
+
 /*
  * elf64_ehdr_t - ELF64 File Header
  * 
