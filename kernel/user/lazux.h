@@ -75,7 +75,7 @@ void exit(int code);
 
 int fork(void); /* Create child process (returns child's PID to parent, 0 to child) */
 
-int exec(int prog_id); /* Replace current process's memory with new program (prog_id) */
+int exec(const char *filename); /* Replace current process's memory with new program (filename) */
 
 int wait(void); /* Wait for child process to exit */
 
@@ -94,3 +94,7 @@ void* malloc(size_t size);
 
 /* Mark a heap block as free (no coalescing yet). */
 void free(void* ptr);
+
+int open(const char *filename);
+
+int read(int fd, void *buffer, int size);

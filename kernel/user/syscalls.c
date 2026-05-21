@@ -1,5 +1,6 @@
 // user/syscall.c
 #include "lazux.h"
+#include "../include/syscall.h"
 #include <stdint.h>
 #include <stdarg.h>
 /*
@@ -31,10 +32,12 @@
  */
 void putchar(char c) {
     __asm__ volatile (
-        "li a7, 1\n"
-        "mv a0, %0\n"
+        "li a7, %[id]\n"
+        "mv a0, %[ch]\n"
         "ecall"
-        : : "r" (c) : "a0", "a7"
+        :
+        : [id] "i" (SYS_PUTCHAR), [ch] "r" (c)
+        : "a0", "a7"
     );
 }
 /*
@@ -90,10 +93,12 @@ void puts(const char *str) {
  */
 void exit(int code) {
     __asm__ volatile (
-        "li a7, 2\n"          /* a7 = 2 (SYS_EXIT) */
-        "mv a0, %0\n"         /* a0 = code (exit code argument) */
+        "li a7, %[id]\n"      /* a7 = SYS_EXIT */
+        "mv a0, %[arg]\n"     /* a0 = code (exit code argument) */
         "ecall"               /* Trap to kernel with SYS_EXIT */
-        : : "r" (code) : "a0", "a7"
+        :
+        : [id] "i" (SYS_EXIT), [arg] "r" (code)
+        : "a0", "a7"
     );
     while(1);               /* Infinite loop (defensive; should never reach) */
 }
@@ -112,12 +117,12 @@ void exit(int code) {
 int fork(void) {
     int ret;
     __asm__ volatile (
-        "li a7, 3\n"          /* a7 = 3 (SYS_FORK) */
+        "li a7, %[id]\n"      /* a7 = SYS_FORK */
         "ecall\n"             /* Trap to kernel; kernel sets a0 based on process */
         "mv %0, a0"           /* Capture kernel's return value into ret */
         : "=r" (ret)          /* Output: a0 → ret */
-        :                      /* No inputs */
-        : "memory"            /* Memory may change (page table copy) */
+        : [id] "i" (SYS_FORK)
+        : "a0", "a7", "memory" /* Memory may change (page table copy) */
     );
     return ret;               /* Parent gets child PID, child gets 0 */
 }
@@ -126,25 +131,22 @@ int fork(void) {
  * exec() - Load and execute alternative ELF program (SYS_EXEC = 4)
  * 
  * Replaces current process image (code, data, entry point) without creating
- * new process. Same PID, new program. Does NOT return on success.
+ * a new process. Same PID, new program. Does NOT return on success.
  * 
- * Phase 4: Two ELF binaries embedded in kernel:
- *   prog_id=0: user/init.elf (main.c)
- *   prog_id=1: user/test2.elf (test2.c)
- * 
- * Phase 5: Will support dynamic loading from filesystem.
+ * Phase 5+: The kernel loads programs by filename from the embedded RAMDISK
+ * (e.g., "init.elf", "test2.elf").
  * 
  * Returns: -1 (error) | never returns (success - execution at new entry point)
  */
-int exec(int prog_id) {
+int exec(const char *filename) {
     int ret;
     __asm__ volatile (
-        "li a7, 4\n"          /* a7 = 4 (SYS_EXEC) */
-        "mv a0, %0\n"         /* a0 = prog_id (which ELF to load) */
+        "li a7, %[id]\n"      /* a7 = SYS_EXEC */
+        "mv a0, %[arg]\n"     /* a0 = filename (pointer to null-terminated string) */
         "ecall\n"             /* Trap to kernel; kernel loads ELF and transfers */
         "mv %0, a0"           /* Capture return (only on error) */
         : "=r" (ret)          /* Output: a0 → ret */
-        : "r" (prog_id)       /* Input: prog_id via register */
+        : [id] "i" (SYS_EXEC), [arg] "r" (filename)
         : "a0", "a7", "memory" /* Clobbered: registers and memory */
     );
     return ret;               /* Returns -1 on error; success never returns */
@@ -162,11 +164,11 @@ int exec(int prog_id) {
 int wait(void) {
     int ret;
     __asm__ volatile (
-        "li a7, 5\n"          /* a7 = 5 (SYS_WAIT) */
+        "li a7, %[id]\n"      /* a7 = SYS_WAIT */
         "ecall\n"             /* Trap to kernel */
         "mv %0, a0"           /* Capture return value */
         : "=r" (ret)          /* Output */
-        :                      /* No inputs */
+        : [id] "i" (SYS_WAIT)
         : "a0", "a7", "memory" /* Clobbered */
     );
     return ret;
@@ -332,12 +334,12 @@ void* sbrk(int increment) {
     /* Request heap growth (or query with increment=0) via SYS_SBRK. */
     void* ret;
     __asm__ volatile (
-        "li a7, 6\n"          /* a7 = 6 (SYS_SBRK) */
-        "mv a0, %1\n"         /* a0 = increment (heap size change) */
+        "li a7, %[id]\n"      /* a7 = SYS_SBRK */
+        "mv a0, %[arg]\n"     /* a0 = increment (heap size change) */
         "ecall\n"             /* Trap to kernel */
         "mv %0, a0"           /* Capture return value (previous break) */
         : "=r" (ret)          /* Output: a0 → ret */
-        : "r" (increment)     /* Input: increment via register */
+        : [id] "i" (SYS_SBRK), [arg] "r" (increment)
         : "a0", "a7", "memory" /* Clobbered */
     );
     return ret;               /* Returns previous end of heap on success */
@@ -412,4 +414,34 @@ void free(void* ptr){
 
     block_meta_t *block = (block_meta_t *)ptr - 1;
     block->is_free = 1;
+}
+
+int open(const char *filename) {
+    int ret;
+    __asm__ volatile (
+        "li a7, %[id]\n"
+        "mv a0, %[arg]\n"
+        "ecall\n"
+        "mv %0, a0\n"
+        : "=r" (ret)
+        : [id] "i" (SYS_OPEN), [arg] "r" (filename)
+        : "a0", "a7", "memory"
+    );
+    return ret;
+}
+
+int read(int fd, void *buffer, int size) {
+    int ret;
+    __asm__ volatile (
+        "li a7, %[id]\n"
+        "mv a0, %[fd]\n"
+        "mv a1, %[buf]\n"
+        "mv a2, %[len]\n"
+        "ecall\n"
+        "mv %0, a0\n"
+        : "=r" (ret)
+        : [id] "i" (SYS_READ), [fd] "r" (fd), [buf] "r" (buffer), [len] "r" (size)
+        : "a0", "a1", "a2", "a7", "memory"
+    );
+    return ret;
 }

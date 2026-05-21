@@ -6,9 +6,8 @@
  * 
  * Memory Layout:
  *   0x80000000-0x80200000: OpenSBI M-mode firmware (protected, not allocated)
- *   0x80200000-_end:       Kernel code/data/BSS (protected, not allocated)
- *   _end-__user_end:       Embedded user program binary (protected, not allocated)
- *   __user_end-0x88000000: Free physical memory (managed by PMM)
+ *   0x80200000-_end:       Kernel code/data/BSS and embedded RAMDISK (protected)
+ *   _end-0x88000000:       Free physical memory (managed by PMM)
  * 
  * Allocation requests get pages from free region, marked as allocated in bitmap.
  */
@@ -69,7 +68,7 @@ extern uint8_t __user_end[];
  * Called once from kmain() during kernel initialization.
  * Sets up bitmap allocator:
  * - Allocates bitmap itself from lowest free page
- * - Marks protected regions as allocated (kernel, user payload, OpenSBI)
+ * - Marks protected regions as allocated (kernel, embedded RAMDISK, OpenSBI)
  * - Marks free pages as available
  * 
  * Side effects: Modifies global state; must be called before pmm_alloc_page()

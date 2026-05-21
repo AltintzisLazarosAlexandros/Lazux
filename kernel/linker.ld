@@ -93,21 +93,14 @@ SECTIONS
  }
 
   /*
-   * === EMBEDDED USER PROGRAM ===
-   * Kernel embeds user program (init.elf) as binary payload.
-   * arch/riscv/payload.S uses '.incbin "user/init.elf"' to include raw bytes.
-   * These bytes become kernel data at runtime.
-   * 
-   * Alignment: 4096 bytes (4KB page size).
-   * Why? Simpler to map entire payload as-is; avoids partial-page issues.
-   * 
+   * === LEGACY EMBEDDED USER SECTION ===
+   * This section was used when a single user ELF was embedded directly.
+   * The current RAMDISK flow embeds a packed image in .rodata instead.
+   *
+   * Kept for compatibility and future experiments; not required by RAMDISK.
    * Linker symbols:
    *   __user_start = address where embedded binary begins
    *   __user_end   = address where embedded binary ends
-   * 
-   * Kernel code accesses via:
-   *   extern uint8_t _user_elf_start;
-   *   load_elf(proc, (const uint8_t*)&_user_elf_start);
    */
   .user : ALIGN(4096) {
     __user_start = .;         /* Export symbol: embedded binary start */

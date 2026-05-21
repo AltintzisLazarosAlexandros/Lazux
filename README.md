@@ -28,7 +28,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-✅ **Phase 4 Complete** and **Phase 5 Complete**: The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 delivered user-space heap growth (`SYS_SBRK`), a minimal user-space `printf`, and RAMDISK-backed program loading.
+✅ **Phase 4 Complete** and **Phase 5 Complete**: The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 delivered user-space heap growth (`SYS_SBRK`), a minimal user-space `printf`, and RAMDISK-backed program loading by filename.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -44,9 +44,12 @@ What exists so far:
 - **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
 - **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
 - **RAMDISK-Backed Program Loading** (Kernel loads ELFs by name from `ramdisk.img` via `_ramdisk_start`)
+- **Filename-Based `exec`** (User passes a string filename; kernel resolves it via RAMDISK header lookup)
+- **RAMDISK File I/O (Read-Only)** (`SYS_OPEN` and `SYS_READ` implemented with FD table)
 - **Verified Process Forking** (Both processes execute independently with separate page tables, proper CPU scheduling via 10ms timer quanta)
 - **User-Space Heap Growth** (`SYS_SBRK` syscall and `sbrk()` wrapper for dynamic memory allocation)
 - **Minimal User-Space printf** (Formatted output with `%s`, `%c`, `%d`, `%u`, `%x`, `%p`, `%%`)
+- **User-Space VFS Test Program** (Reads ELF magic from RAMDISK via `open`/`read`)
 - **RAMDISK Build Tooling** (`mkramdisk` packs ELFs into `ramdisk.img`)
 - **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, design rationale, and fork/exec mechanisms)
 
@@ -54,7 +57,7 @@ What exists so far:
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
 
 Phase 6 steps involve:
-- Implementing file descriptor syscalls: `SYS_READ`, `SYS_WRITE`, `SYS_OPEN`, `SYS_CLOSE`.
+- Finishing file descriptor syscalls: `SYS_WRITE` and `SYS_CLOSE` (read/open already present).
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
 - Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).

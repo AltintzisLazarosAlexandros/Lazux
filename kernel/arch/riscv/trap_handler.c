@@ -22,6 +22,7 @@
 #include "sbi.h"
 #include "proc.h"
 #include "mkramdisk.h"
+#include "syscall.h"
 #include <string.h>
 
 /* Assembly context switch function: swaps virtual address spaces and registers */
@@ -58,7 +59,26 @@ static int streq(const char *a, const char *b)
     return *a == *b;
 }
 
-static const uint8_t *ramdisk_find(const char *name)
+// static const uint8_t *ramdisk_find(const char *name)
+// {
+//     const ramdisk_header_t *hdr = (const ramdisk_header_t *)_ramdisk_start;
+//     if (hdr->magic != RAMDISK_MAGIC) {
+//         return 0;
+//     }
+
+//     const ramdisk_entry_t *entries = (const ramdisk_entry_t *)
+//         (_ramdisk_start + sizeof(ramdisk_header_t));
+
+//     for (uint32_t i = 0; i < hdr->num_entries; i++) {
+//         if (streq(entries[i].name, name)) {
+//             return _ramdisk_start + entries[i].offset;
+//         }
+//     }
+
+//     return 0;
+// }
+
+static const ramdisk_entry_t* ramdisk_get_entry(const char *name)
 {
     const ramdisk_header_t *hdr = (const ramdisk_header_t *)_ramdisk_start;
     if (hdr->magic != RAMDISK_MAGIC) {
@@ -70,7 +90,7 @@ static const uint8_t *ramdisk_find(const char *name)
 
     for (uint32_t i = 0; i < hdr->num_entries; i++) {
         if (streq(entries[i].name, name)) {
-            return _ramdisk_start + entries[i].offset;
+            return &entries[i];
         }
     }
 
@@ -210,15 +230,15 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
          * 3. Advance sepc past ecall (4 bytes) so sret doesn't re-execute
          */
         tf->sepc += 4; /* Advance past ecall instruction (all ecall are 4 bytes) */
-        
+        __asm__ volatile("csrs sstatus, %0" : : "r"(1 << 18));
         switch (tf->a7) /* Dispatch on syscall function ID */
         {
-        case 1: /* SYS_PUTCHAR: output single character */
+        case SYS_PUTCHAR: /* SYS_PUTCHAR: output single character */
             sbi_putchar((char)tf->a0); /* Character to output is in a0 */
             tf->a0 = 0;                 /* Set return value: 0 = success */
             break;
             
-        case 2: /* SYS_EXIT: terminate current process */
+        case SYS_EXIT: /* SYS_EXIT: terminate current process */
             sbi_puts("\n[kernel] Process ");
             puthex(current_proc->pid); 
             sbi_puts(" became a ZOMBIE.\n");
@@ -235,7 +255,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             return schedule(tf);
         
-        case 3: /* SYS_FORK: create child process */
+        case SYS_FORK: /* SYS_FORK: create child process */
         {
             /*
              * PHASE 4 FORK IMPLEMENTATION - Working with Correct Return Values
@@ -309,6 +329,11 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 
             process_t *child = alloc_proc();
             child->parent_pid = current_proc->pid;
+
+            for (int i = 0; i < FD_MAX; i++) {
+                child->open_files[i] = current_proc->open_files[i];
+            }
+
             if (child == 0) {
                 sbi_puts("[trap_handler] FORK FAILED: no proc slot\n");
                 tf->a0 = -1;
@@ -338,7 +363,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 
             return tf;
         }
-        case 4: /* SYS_EXEC: Load and execute alternative user program */
+        case SYS_EXEC: /* SYS_EXEC: Load and execute alternative user program */
         {
             /*
              * PHASE 5 SYS_EXEC - RAMDISK-backed ELF loading
@@ -352,12 +377,11 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              * The kernel locates entries by name in the ramdisk header.
              * 
              * SYS_EXEC SYSCALL ARGUMENT (a0 register):
-             *   a0 = 0: Load init.elf
-             *   a0 = 1: Load test2.elf
-             *   a0 = other: Error (-1 return)
+             *   a0 = pointer to a null-terminated filename in user memory
+             *   The name is looked up in the RAMDISK header.
              * 
              * IMPLEMENTATION STEPS:
-             * 1. Route to appropriate embedded ELF based on a0 (prog_id)
+             * 1. Look up the requested filename in the RAMDISK directory
              * 2. Allocate fresh root page table (new memory context)
              * 3. Map kernel space into new page table (preserve S-mode accessibility)
              * 4. Parse ELF binary and map PT_LOAD segments into new page table
@@ -390,10 +414,11 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              *   - Never returns to caller (unless error)
              * 
              * ERROR HANDLING:
-             * On failure (invalid prog_id or OOM):
+             * On failure (file not found or OOM):
              *   - Return a0 = -1
              *   - Leave process unchanged
              *   - Process continues with original program
+             *   - Do NOT advance sepc here (already advanced in ecall handler)
              * 
              * RAMDISK RATIONALE:
              * Decouples the kernel from fixed symbols and enables dynamic
@@ -405,20 +430,17 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              * All programs validated during kernel linking.
              */
             sbi_puts("[trap_handler] SYS_EXEC called\n");
-            const uint8_t *elf_data = 0;
-            
-            if (tf->a0 == 0) elf_data = ramdisk_find("init.elf");
-            else if (tf->a0 == 1) elf_data = ramdisk_find("test2.elf");
-            else {
-                tf->a0 = -1; 
-                tf->sepc += 4;
-                return tf;
-            }
 
-            if (!elf_data) {
+            const char *filename = (const char *)tf->a0;
+            const ramdisk_entry_t *entry = ramdisk_get_entry(filename);
+
+            if (!entry) {
+                sbi_puts("[trap_handler] EXEC FAILED: File not found!\n");
                 tf->a0 = -1;
                 return tf;
             }
+
+            const uint8_t *elf_data = _ramdisk_start + entry->offset;
 
             page_table_t *old_pt = current_proc->page_table;
 
@@ -442,7 +464,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 
             return tf;
         }
-        case 5: /* SYS_WAIT */
+        case SYS_WAIT: /* SYS_WAIT */
         {
             extern process_t process_table[64];
             int have_kids = 0;
@@ -473,7 +495,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             return schedule(tf);
         }
-        case 6: /* SYS_SBRK */
+        case SYS_SBRK: /* SYS_SBRK */
         {
             //tf->sepc += 4;
             intptr_t increment = tf->a0;
@@ -513,12 +535,90 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             return tf;
         }
+        case SYS_OPEN: /* SYS_OPEN */
+        {
+            const char* filename = (const char*)tf->a0;
+            int fd = -1;
+            
+            for (int i = 3; i < FD_MAX; i++) {
+                if (current_proc->open_files[i].type == FILE_TYPE_NONE) {
+                    fd = i;
+                    break;
+                }
+            }
+
+            if (fd == -1) {
+                tf->a0 = -1; 
+                return tf;
+            }
+
+            const ramdisk_entry_t *entry = ramdisk_get_entry(filename);
+
+            if (!entry) {
+                tf->a0 = -1; 
+                return tf;
+            }
+            
+            current_proc->open_files[fd].type = FILE_TYPE_RAMDISK;
+            current_proc->open_files[fd].offset = 0; 
+            current_proc->open_files[fd].size = entry->size;
+            current_proc->open_files[fd].data = _ramdisk_start + entry->offset;
+
+            tf->a0 = fd;
+            return tf;
+        }
+        case SYS_READ: /* SYS_READ */
+        {
+            int fd = (int)tf->a0;
+            char* buffer = (char*)tf->a1;
+            uint32_t size = (uint32_t)tf->a2;
+
+            if (fd < 0 || fd >= FD_MAX) {
+                tf->a0 = -1;
+                return tf;
+            }
+            
+            file_t *file = &current_proc->open_files[fd];
+            
+            if (file->type == FILE_TYPE_NONE) {
+                tf->a0 = -1; 
+                return tf;
+            }
+
+            if (file->type == FILE_TYPE_CONSOLE) {
+                tf->a0 = -1; 
+                return tf;
+            }
+            
+            if (file->type == FILE_TYPE_RAMDISK) {
+                uint32_t bytes_left = file->size - file->offset;
+                if (bytes_left == 0) {
+                    tf->a0 = 0; 
+                    return tf;
+                }
+                
+                uint32_t read_size = size;
+                if (read_size > bytes_left) {
+                    read_size = bytes_left;
+                }
+                
+                memcpy(buffer, file->data + file->offset, read_size);
+                
+                file->offset += read_size;
+                
+                tf->a0 = read_size;
+                return tf;
+            }
+            
+            tf->a0 = -1;
+            return tf;
+        }
+        case SYS_WRITE: /* SYS_WRITE (placeholder) */
         default: /* Unknown syscall: kernel error */
             sbi_puts("\n[kernel] unknown syscall, killing user\n");
             for (;;) {}
         }
         return tf;
-
     default: /* Unhandled exception type (page fault, illegal instruction, etc.) */
         sbi_puts("\n[TRAP] U-mode fault (kill)\n");
         sbi_puts("  scause=0x");

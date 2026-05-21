@@ -209,6 +209,22 @@ Successfully implemented preemptive round-robin scheduling driven by hardware ti
 
 ---
 
+## 21-05-2026 — Phase 5/6 Bridge: Filename-Based Exec and RAMDISK I/O
+
+### Summary
+Transitioned `SYS_EXEC` to accept a filename pointer and load programs directly from the RAMDISK directory. Added read-only RAMDISK file access with `SYS_OPEN`/`SYS_READ`, and validated the path with a user-space VFS test program.
+
+### Implemented
+- **Filename-Based `exec` ABI:** `exec("test2.elf")` now passes a string pointer; kernel resolves it via `ramdisk_get_entry()`.
+- **RAMDISK File Descriptors:** Added `SYS_OPEN` and `SYS_READ` backed by per-process FD tables.
+- **User-Space VFS Test:** `user/test2.c` opens `init.elf`, reads the ELF magic, and prints results.
+
+### Notes
+- The syscall entry already advances `sepc`; `SYS_EXEC` error paths no longer adjust it again.
+- File I/O is currently **read-only** and RAMDISK-backed; `SYS_WRITE`/`SYS_CLOSE` remain Phase 6 work.
+
+---
+
 ## 08-05-2026 — Phase 4 Documentation: Comprehensive Code Commentary
 
 ### Summary

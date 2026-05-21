@@ -20,6 +20,19 @@
 /* External assembly context switch routine */
 extern void switch_to_user(trap_frame_t* tf, uint64_t satp_val);
 
+#define FD_MAX 16
+
+#define FILE_TYPE_NONE    0
+#define FILE_TYPE_CONSOLE 1 // for screen/keyboard
+#define FILE_TYPE_RAMDISK 2 // for files of RAMDISK
+
+// How an open file looks in the kernel
+typedef struct {
+    int type;           // What type of file it is;
+    uint32_t offset;    // At which byte of the file we are (for read/write)
+    uint32_t size;      // The total size (for the RAMDISK)
+    const uint8_t* data; // The pointer to the data (for the RAMDISK)
+} file_t;
 /*
  * proc_state - Process execution state
  * 
@@ -56,6 +69,8 @@ typedef struct{
 
 	uintptr_t heap_break; /* Current end of heap (for sbrk/brk system calls) */
 	uintptr_t heap_max;   /* Upper heap limit (guard against stack/region overlap) */
+
+	file_t open_files[FD_MAX]; /* Open file descriptors (for future file system implementation) */
 }process_t;
 
 /* Function declarations */

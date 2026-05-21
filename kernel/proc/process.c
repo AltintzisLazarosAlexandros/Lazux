@@ -53,6 +53,22 @@ void proc_init(void){
 	}
 }
 
+void init_process_fds(process_t *p) {
+	/* 
+	 * Initialize all file descriptors to FILE_TYPE_NONE (closed).
+	 * This ensures that any uninitialized fd is clearly invalid.
+	 */
+    for (int i = 0; i < FD_MAX; i++) {
+        p->open_files[i].type = FILE_TYPE_NONE;
+        p->open_files[i].offset = 0;
+        p->open_files[i].size = 0;
+        p->open_files[i].data = 0;
+    }
+
+    p->open_files[0].type = FILE_TYPE_CONSOLE; // stdin  (Standard Input)
+    p->open_files[1].type = FILE_TYPE_CONSOLE; // stdout (Standard Output)
+    p->open_files[2].type = FILE_TYPE_CONSOLE; // stderr (Standard Error)
+}
 /*
  * alloc_proc() - Allocate new process from process table
  * 
@@ -154,7 +170,7 @@ process_t* alloc_proc(void){
  * 
  * args:
  *   p        - process_t PCB to load binary into
- *   elf_data - pointer to ELF64 binary (embedded in kernel via _user_elf_start)
+ *   elf_data - pointer to ELF64 binary (from RAMDISK or other embedded source)
  * 
  * returns: 0 on success, -1 on error (invalid ELF or memory exhaustion)
  * 

@@ -3,4 +3,5 @@
 *.disasm
 /docs/
 .gitignore
-
+/tools/mkramdisk
+ramdisk.img
