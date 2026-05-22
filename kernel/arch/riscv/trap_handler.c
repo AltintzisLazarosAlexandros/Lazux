@@ -535,7 +535,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             
             return tf;
         }
-        case SYS_OPEN: /* SYS_OPEN */
+        case SYS_OPEN: /* SYS_OPEN: open RAMDISK file by name */
         {
             const char* filename = (const char*)tf->a0;
             int fd = -1;
@@ -567,7 +567,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             tf->a0 = fd;
             return tf;
         }
-        case SYS_READ: /* SYS_READ */
+        case SYS_READ: /* SYS_READ: read bytes from RAMDISK file */
         {
             int fd = (int)tf->a0;
             char* buffer = (char*)tf->a1;
@@ -613,7 +613,65 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             tf->a0 = -1;
             return tf;
         }
-        case SYS_WRITE: /* SYS_WRITE (placeholder) */
+        case SYS_WRITE: /* SYS_WRITE: console-only; RAMDISK is read-only */
+	{
+		int fd = (int) tf->a0;
+		const char* buffer = (const char*) tf->a1;
+		uint32_t size = (uint32_t) tf->a2;
+		if(fd < 0 || fd >= FD_MAX){
+			
+			tf->a0 = -1;
+			return tf;
+		}
+		file_t *file = &current_proc->open_files[fd];
+
+		if(file->type == FILE_TYPE_NONE){
+			tf->a0 = -1;
+			return tf;
+		}
+
+		if(file->type == FILE_TYPE_CONSOLE){
+			for(uint32_t i = 0; i < size; i++){
+				sbi_putchar(buffer[i]);
+			}
+			tf->a0 = size;
+			return tf;
+		}
+		if (file->type == FILE_TYPE_RAMDISK) {
+                	
+			sbi_puts(" Not possible yet");
+
+			tf->a0 = -1; // Permission Denied
+                	return tf;
+            	}
+            
+            	tf->a0 = -1;
+            	return tf;
+
+	}
+    case SYS_CLOSE: /* SYS_CLOSE: release file descriptor slot */
+	{
+		int fd = (int) tf->a0;
+		if (fd < 0 || fd >= FD_MAX) {
+                	tf->a0 = -1;
+                	return tf;
+            	}
+            
+            	file_t *file = &current_proc->open_files[fd];
+            
+            	if (file->type == FILE_TYPE_NONE) {
+                	tf->a0 = -1; 
+                	return tf;
+            	}
+            
+            	file->type = FILE_TYPE_NONE;
+            	file->offset = 0;
+            	file->size = 0;
+            	file->data = 0;
+            
+            	tf->a0 = 0; 
+            	return tf;
+	}
         default: /* Unknown syscall: kernel error */
             sbi_puts("\n[kernel] unknown syscall, killing user\n");
             for (;;) {}

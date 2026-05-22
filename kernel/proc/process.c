@@ -106,6 +106,8 @@ process_t* alloc_proc(void){
 	/* Assign unique process ID and mark as READY */
 	p->pid = next_pid++;
     	p->state = PROC_READY;
+	
+	init_process_fds(p);
 
 	/*
 	 * Allocate isolated page table (Level 2 root).

@@ -70,7 +70,7 @@ typedef struct{
 	uintptr_t heap_break; /* Current end of heap (for sbrk/brk system calls) */
 	uintptr_t heap_max;   /* Upper heap limit (guard against stack/region overlap) */
 
-	file_t open_files[FD_MAX]; /* Open file descriptors (for future file system implementation) */
+	file_t open_files[FD_MAX]; /* Open file descriptors (console + RAMDISK) */
 }process_t;
 
 /* Function declarations */

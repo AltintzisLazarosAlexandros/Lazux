@@ -221,7 +221,22 @@ Transitioned `SYS_EXEC` to accept a filename pointer and load programs directly 
 
 ### Notes
 - The syscall entry already advances `sepc`; `SYS_EXEC` error paths no longer adjust it again.
-- File I/O is currently **read-only** and RAMDISK-backed; `SYS_WRITE`/`SYS_CLOSE` remain Phase 6 work.
+- File I/O is currently **read-only** and RAMDISK-backed; RAMDISK writes return an error.
+
+---
+
+## 22-05-2026 — Phase 6: SYS_WRITE/SYS_CLOSE and Console Output Path
+
+### Summary
+Completed the first Phase 6 milestone by wiring `SYS_WRITE` and `SYS_CLOSE` end-to-end. Console output now flows through `SYS_WRITE`, while RAMDISK remains read-only.
+
+### Implemented
+- **SYS_WRITE:** Console-only writes; RAMDISK writes return -1 (read-only policy).
+- **SYS_CLOSE:** Releases FD slots and clears per-FD state.
+- **User wrappers:** `write()`/`close()` added; `putchar()`/`puts()` now use `SYS_WRITE` for stdout.
+
+### Notes
+- Next step is to formalize error codes and consider copy-in validation for user pointers.
 
 ---
 

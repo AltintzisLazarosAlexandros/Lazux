@@ -95,6 +95,10 @@ void* malloc(size_t size);
 /* Mark a heap block as free (no coalescing yet). */
 void free(void* ptr);
 
-int open(const char *filename);
+int open(const char *filename); /* Open a RAMDISK file by name */
 
-int read(int fd, void *buffer, int size);
+int read(int fd, void *buffer, int size); /* Read from a RAMDISK file descriptor */
+
+int write(int fd, const void* buffer, int size); /* Write to a console fd (RAMDISK write unsupported) */
+
+int close(int fd); /* Close a file descriptor */

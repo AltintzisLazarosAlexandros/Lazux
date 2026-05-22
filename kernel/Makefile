@@ -219,5 +219,5 @@ run: kernel.elf
 #   1. OpenSBI (M-mode) initializes hardware, loads kernel at 0x80200000
 #   2. Jumps to kernel entry point (entry.S)
 #   3. Kernel runs in S-mode (supervisor)
-#   4. Kernel loads user program (init.elf) from embedded payload
+#   4. Kernel loads user program (init.elf) from embedded ramdisk image
 #   5. Kernel switches to U-mode, user program runs

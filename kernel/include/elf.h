@@ -2,7 +2,7 @@
  * elf.h - ELF64 Binary Format Definitions
  * 
  * Defines structures for parsing ELF64 (Executable and Linkable Format) binaries.
- * User programs are compiled to ELF64 and embedded in the kernel as raw binary data.
+ * User programs are compiled to ELF64 and stored in the embedded RAMDISK image.
  * The kernel parses these headers to understand where code/data segments are located
  * and loads them into isolated process memory spaces.
  */

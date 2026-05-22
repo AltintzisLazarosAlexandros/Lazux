@@ -1,66 +1,13 @@
-// user/syscall.c
+/*
+ * user/syscalls.c - User-space syscall wrappers and tiny libc helpers
+ *
+ * Provides minimal user-space services on top of the Lazux syscall ABI.
+ * This is intentionally small and freestanding (no libc).
+ */
 #include "lazux.h"
 #include "../include/syscall.h"
 #include <stdint.h>
 #include <stdarg.h>
-/*
- * putchar() - Output single character via syscall
- * 
- * Invokes SYS_PUTCHAR syscall (function ID 1).
- * Kernel will copy character to console (UART).
- * 
- * args:
- *   c - character to output (must fit in 8 bits, passed in a0 register)
- * 
- * returns: none (return value ignored for display purposes)
- * 
- * Inline Assembly:
- *   "li a7, 1"    = Load Immediate 1 into a7 (syscall function ID)
- *   "mv a0, %0"   = Move %0 (input c) into a0 (syscall argument 0)
- *   "ecall"       = Trigger exception to S-mode (syscall trap)
- *   : (output constraints) = none (void function)
- *   : "r" (c) = input operand: c in any register
- *   : "a0", "a7" = clobbered registers (tells compiler these are modified)
- * 
- * Trap Flow:
- *   1. ecall causes S-mode exception (scause=0x8)
- *   2. trap.S saves registers, calls trap_handler
- *   3. trap_handler reads scause, recognizes SYS_PUTCHAR (a7=1)
- *   4. SBI writes character to console
- *   5. trap_handler advances sepc past ecall
- *   6. sret restores U-mode execution after ecall
- */
-void putchar(char c) {
-    __asm__ volatile (
-        "li a7, %[id]\n"
-        "mv a0, %[ch]\n"
-        "ecall"
-        :
-        : [id] "i" (SYS_PUTCHAR), [ch] "r" (c)
-        : "a0", "a7"
-    );
-}
-/*
- * puts() - Output null-terminated string
- * 
- * Iterates through string characters, calling putchar for each.
- * Stops at null terminator (zero byte).
- * 
- * args:
- *   str - pointer to null-terminated C string
- * 
- * returns: none
- * 
- * Usage:
- *   puts("Hello\n");  // outputs "Hello" and newline
- */
-void puts(const char *str) {
-    while (*str != '\0') {
-        putchar(*str);
-        str++;
-    }
-}
-
 /*
  * exit() - Terminate current process via SYS_EXIT syscall
  * 
@@ -416,6 +363,7 @@ void free(void* ptr){
     block->is_free = 1;
 }
 
+/* open() - Open a RAMDISK file by name (SYS_OPEN = 7). */
 int open(const char *filename) {
     int ret;
     __asm__ volatile (
@@ -430,6 +378,7 @@ int open(const char *filename) {
     return ret;
 }
 
+/* read() - Read bytes from a RAMDISK file descriptor (SYS_READ = 8). */
 int read(int fd, void *buffer, int size) {
     int ret;
     __asm__ volatile (
@@ -445,3 +394,75 @@ int read(int fd, void *buffer, int size) {
     );
     return ret;
 }
+
+/*
+ * write() - Write bytes to a file descriptor (SYS_WRITE = 9)
+ *
+ * Note: Currently supports console FDs; RAMDISK writes return -1.
+ */
+int write(int fd, const void *buffer, int size){
+	int ret;
+	__asm__ volatile(
+		"li a7, %[id]\n"
+		"mv a0, %[fd]\n"
+		"mv a1, %[buf]\n"
+		"mv a2, %[len]\n"
+		"ecall\n"
+		"mv %0, a0\n"
+		: "=r" (ret)
+		: [id] "i" (SYS_WRITE), [fd] "r" (fd), [buf] "r" (buffer), [len] "r" (size)
+		: "a0", "a1", "a2", "a7", "memory"
+	);
+	return ret;
+}
+
+/*
+ * close() - Close an open file descriptor (SYS_CLOSE = 10)
+ */
+int close(int fd){
+	int ret;
+	__asm__ volatile(
+		"li a7, %[id]\n"
+		"mv a0, %[fd]\n"
+		"ecall\n"
+		"mv %0, a0\n"
+		: "=r" (ret)
+		: [id] "i" (SYS_CLOSE), [fd] "r" (fd)
+		: "a0", "a7", "memory"
+	);
+	return ret;
+}
+
+
+/* strlen() - tiny helper for puts/write; avoids libc. */
+static int strlen(const char *str) {
+    int len = 0;
+    while (str[len] != '\0') {
+        len++;
+    }
+    return len;
+}
+
+/* putchar() - Output a single character via SYS_WRITE to stdout. */
+void putchar(char c) {
+    write(1, &c, 1);
+}
+/*
+ * puts() - Output null-terminated string
+ * 
+ * Iterates through string characters, calling putchar for each.
+ * Stops at null terminator (zero byte).
+ * 
+ * args:
+ *   str - pointer to null-terminated C string
+ * 
+ * returns: none
+ * 
+ * Usage:
+ *   puts("Hello\n");  // outputs "Hello" and newline
+ */
+/* puts() - Output a string via SYS_WRITE to stdout. */
+void puts(const char *str) {
+    write(1, str, strlen(str));
+}
+

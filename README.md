@@ -45,7 +45,7 @@ What exists so far:
 - **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
 - **RAMDISK-Backed Program Loading** (Kernel loads ELFs by name from `ramdisk.img` via `_ramdisk_start`)
 - **Filename-Based `exec`** (User passes a string filename; kernel resolves it via RAMDISK header lookup)
-- **RAMDISK File I/O (Read-Only)** (`SYS_OPEN` and `SYS_READ` implemented with FD table)
+- **RAMDISK File I/O (Read-Only)** (`SYS_OPEN`, `SYS_READ`, `SYS_CLOSE`, console `SYS_WRITE`)
 - **Verified Process Forking** (Both processes execute independently with separate page tables, proper CPU scheduling via 10ms timer quanta)
 - **User-Space Heap Growth** (`SYS_SBRK` syscall and `sbrk()` wrapper for dynamic memory allocation)
 - **Minimal User-Space printf** (Formatted output with `%s`, `%c`, `%d`, `%u`, `%x`, `%p`, `%%`)
@@ -57,7 +57,7 @@ What exists so far:
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
 
 Phase 6 steps involve:
-- Finishing file descriptor syscalls: `SYS_WRITE` and `SYS_CLOSE` (read/open already present).
+- Expanding file descriptor semantics (errors, permissions, and RAMDISK write policy).
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
 - Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).
