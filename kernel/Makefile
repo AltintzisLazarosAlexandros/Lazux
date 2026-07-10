@@ -5,6 +5,9 @@
 #  Embeds user program into kernel; kernel loader extracts and executes it.
 #  Supports QEMU virt platform emulation.
 
+# 'user/init.elf' is the first rule below, so without this, a bare 'make'
+# would only rebuild the user ELF and silently skip kernel.elf.
+.DEFAULT_GOAL := all
 
 # ============================================================================
 # TOOLCHAIN CONFIGURATION

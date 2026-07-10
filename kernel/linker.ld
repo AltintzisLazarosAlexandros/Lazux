@@ -43,30 +43,40 @@ SECTIONS
    *   .text.* = special text subsections (e.g., .text.startup, .text.hot)
    */
   .text : {
+    __text_start = .;         /* Export symbol: kernel code start (for W^X mapping) */
     *(.text .text.*)
   }
+
+  /* Page-align so .text can be mapped R+X without bleeding into .rodata */
+  . = ALIGN(4096);
+  __text_end = .;             /* Export symbol: kernel code end (for W^X mapping) */
 
   /*
    * === READ-ONLY DATA SECTION ===
    * String literals, constant arrays, const variables.
    * Protected from accidental write.
-   * 
+   *
    * Example RO data:
    *   "[kernel] Process 5 exited.\n"  (from sbi_puts calls)
    *   Linker symbols, constant lookup tables
    */
   .rodata : {
+    __rodata_start = .;       /* Export symbol: rodata start (for W^X mapping) */
     *(.rodata .rodata.*)
   }
+
+  /* Page-align so .rodata can be mapped read-only without bleeding into .data */
+  . = ALIGN(4096);
+  __rodata_end = .;           /* Export symbol: rodata end (for W^X mapping) */
 
   /*
    * === INITIALIZED DATA SECTION ===
    * Global variables with explicit initializers.
-   * 
+   *
    * Lazux example:
    *   int next_pid = 1;           (in process.c)
    *   process_t process_table[64] (in process.c)
-   * 
+   *
    * Note: Uninitialized globals (.bss below) are NOT included here.
    *       Uninitialized data is compacted (not stored in binary, saves space).
    */

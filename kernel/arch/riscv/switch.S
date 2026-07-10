@@ -54,13 +54,13 @@ switch_to_user:
      * Controls privilege mode, interrupt enables, and other CPU state.
      * Must set sstatus to transition to U-mode on sret.
      */
-    csrr t0, sstatus      /* Read current sstatus into t0 */
-    
-    li t1, ~0x100       /* Create mask to CLEAR bit 8 (SPP = Supervisor Previous Privilege) */
-    and t0, t0, t1      /* Clear SPP bit → 0 means U-mode will execute after sret */
-    
-    li t1, 0x20         /* Create mask to SET bit 5 (SPIE = Supervisor Previous Interrupt Enable) */
-    or t0, t0, t1       /* Set SPIE bit → interrupts enabled when u-mode runs */
+    csrr t0, sstatus
+    li t1, ~0x100
+    and t0, t0, t1       /* clear SPP */
+    li t1, 0x20
+    or t0, t0, t1        /* set SPIE */
+    li t1, ~(1 << 18)
+    and t0, t0, t1       /* clear SUM — never let U-mode run with SUM set */
     
     csrw sstatus, t0    /* Write modified sstatus back to CSR */
 

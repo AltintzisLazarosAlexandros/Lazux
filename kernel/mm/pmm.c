@@ -74,27 +74,21 @@ static uintptr_t *pmm_translator(uintptr_t index)
  */
 void *pmm_alloc_page(void)
 {
-    uintptr_t index = 0;
     bitmap = (uint8_t *)_end;  /* Refresh bitmap pointer (paranoid safety) */
-    
+
     /* Scan through all pages looking for a free one (bit = 0) */
     for (uintptr_t i = 0; i < TOTAL_PAGES; i++)
     {
         /* Check if bit i is free (0) */
         if ((bitmap[i / 8] & (1 << (i % 8))) == 0)
         {
-            index = i;  /* Found free page */
-            bitmap[index / 8] |= (1 << (index % 8));  /* Mark as in-use */
-            break;
+            bitmap[i / 8] |= (1 << (i % 8));  /* Mark as in-use */
+            return pmm_translator(i);         /* Return immediately: index 0 is a valid page */
         }
     }
 
-    /* If no free page found (index still 0 after scan), return NULL (OOM) */
-    if (index == 0)
-        return 0;
-
-    /* Convert page index to physical address and return it */
-    return pmm_translator(index);
+    /* No free page found in the entire bitmap: out of memory */
+    return 0;
 }
 
 void pmm_free_page(void *pa){

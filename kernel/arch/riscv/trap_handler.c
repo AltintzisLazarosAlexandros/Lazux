@@ -23,6 +23,7 @@
 #include "proc.h"
 #include "mkramdisk.h"
 #include "syscall.h"
+#include "errno.h"
 #include <string.h>
 
 /* Assembly context switch function: swaps virtual address spaces and registers */
@@ -45,6 +46,7 @@ extern uint8_t _ramdisk_end[];
 extern int load_elf(process_t *p, const uint8_t *elf_data);
 extern void vmm_map_kernel(page_table_t* pt);
 extern void* pmm_alloc_page(void);
+extern void pmm_free_page(void *pa);
 extern void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level);
 extern void vmm_free_pt(page_table_t *root);
 extern void free_proc(process_t *p);
@@ -112,6 +114,29 @@ static inline int from_supervisor(trap_frame_t *tf)
 {
     /* SPP bit is bit 8 of sstatus; 1 = came from S-mode, 0 = came from U-mode */
     return (tf->sstatus >> 8) & 1;
+}
+
+/* Returns 1 if [va, va+len) is fully mapped, user-accessible, and has `need` perms */
+static int user_range_ok(uintptr_t va, size_t len, uint64_t need)
+{
+    if (va == 0) return 0;
+    uintptr_t start = va & ~0xFFFULL;
+    uintptr_t end   = (va + len + 0xFFF) & ~0xFFFULL;
+    for (uintptr_t p = start; p < end; p += 4096) {
+        pte_t *pte = vmm_lookup(current_proc->page_table, p);
+        if (!pte || !(*pte & PTE_V) || !(*pte & PTE_U)) return 0;
+        if ((need & ~*pte) & (PTE_R | PTE_W)) return 0;
+    }
+    return 1;
+}
+
+static int user_str_ok(const char *s, size_t max)
+{
+    for (size_t i = 0; i < max; i++) {
+        if (!user_range_ok((uintptr_t)(s + i), 1, PTE_R)) return 0;
+        if (s[i] == '\0') return 1;
+    }
+    return 0; /* not NUL-terminated within max */
 }
 
 /*
@@ -328,18 +353,19 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             current_proc->trap_frame = *tf;
 
             process_t *child = alloc_proc();
+
+            if (child == 0) {
+                sbi_puts("[trap_handler] FORK FAILED: no proc slot\n");
+                tf->a0 = E_AGAIN;
+                /* sepc already advanced by the +4 before the switch; don't add again */
+                return tf;
+            }
             child->parent_pid = current_proc->pid;
 
             for (int i = 0; i < FD_MAX; i++) {
                 child->open_files[i] = current_proc->open_files[i];
             }
 
-            if (child == 0) {
-                sbi_puts("[trap_handler] FORK FAILED: no proc slot\n");
-                tf->a0 = -1;
-                /* sepc already advanced by the +4 before the switch; don't add again */
-                return tf;
-            }
             uint64_t child_kstack = child->trap_frame.kernel_sp;
 
             child->trap_frame = *tf;
@@ -432,11 +458,12 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             sbi_puts("[trap_handler] SYS_EXEC called\n");
 
             const char *filename = (const char *)tf->a0;
+            if (!user_str_ok(filename, 256)) { tf->a0 = E_FAULT; return tf; }
             const ramdisk_entry_t *entry = ramdisk_get_entry(filename);
 
             if (!entry) {
                 sbi_puts("[trap_handler] EXEC FAILED: File not found!\n");
-                tf->a0 = -1;
+                tf->a0 = E_NOENT;
                 return tf;
             }
 
@@ -485,7 +512,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             }
             
             if(!have_kids) {
-                tf->a0 = -1; 
+                tf->a0 = E_NOENT;
                 return tf;
             }
             
@@ -508,12 +535,12 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             }
 
             if(increment < 0) {
-                tf->a0 = -1; 
+                tf->a0 = E_PERM;
                 return tf;
             }
 
             if(new_break > current_proc->heap_max) {
-                tf->a0 = -1; 
+                tf->a0 = E_NOMEM;
                 return tf;
             }
 
@@ -522,13 +549,17 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             for (uintptr_t addr = old_page_end; addr < new_page_end; addr += 4096) {
                 void *phys_page = pmm_alloc_page();
                 if (!phys_page) {
-                    tf->a0 = -1; // Out of memory
+                    tf->a0 = E_NOMEM;
                     return tf;
                 }
                 memset(phys_page, 0, 4096);
-                
+
                 uint64_t flags = PTE_U | PTE_R | PTE_W;
-                map_page(current_proc->page_table, addr, (uintptr_t)phys_page, flags);
+                if (map_page(current_proc->page_table, addr, (uintptr_t)phys_page, flags) != 0) {
+                    pmm_free_page(phys_page);
+                    tf->a0 = E_NOMEM;
+                    return tf;
+                }
             }
             current_proc->heap_break = new_break;
             tf->a0 = old_break;
@@ -538,8 +569,9 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
         case SYS_OPEN: /* SYS_OPEN: open RAMDISK file by name */
         {
             const char* filename = (const char*)tf->a0;
+            if (!user_str_ok(filename, 256)) { tf->a0 = E_FAULT; return tf; }
             int fd = -1;
-            
+
             for (int i = 3; i < FD_MAX; i++) {
                 if (current_proc->open_files[i].type == FILE_TYPE_NONE) {
                     fd = i;
@@ -548,14 +580,14 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             }
 
             if (fd == -1) {
-                tf->a0 = -1; 
+                tf->a0 = E_NOMEM;
                 return tf;
             }
 
             const ramdisk_entry_t *entry = ramdisk_get_entry(filename);
 
             if (!entry) {
-                tf->a0 = -1; 
+                tf->a0 = E_NOENT;
                 return tf;
             }
             
@@ -573,20 +605,21 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             char* buffer = (char*)tf->a1;
             uint32_t size = (uint32_t)tf->a2;
 
+            if (!user_range_ok((uintptr_t)buffer, size, PTE_W)) { tf->a0 = E_FAULT; return tf; }
             if (fd < 0 || fd >= FD_MAX) {
-                tf->a0 = -1;
+                tf->a0 = E_BADF;
                 return tf;
             }
-            
+
             file_t *file = &current_proc->open_files[fd];
-            
+
             if (file->type == FILE_TYPE_NONE) {
-                tf->a0 = -1; 
+                tf->a0 = E_BADF;
                 return tf;
             }
 
             if (file->type == FILE_TYPE_CONSOLE) {
-                tf->a0 = -1; 
+                tf->a0 = E_PERM;
                 return tf;
             }
             
@@ -609,8 +642,8 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 tf->a0 = read_size;
                 return tf;
             }
-            
-            tf->a0 = -1;
+
+            tf->a0 = E_BADF;
             return tf;
         }
         case SYS_WRITE: /* SYS_WRITE: console-only; RAMDISK is read-only */
@@ -618,15 +651,18 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 		int fd = (int) tf->a0;
 		const char* buffer = (const char*) tf->a1;
 		uint32_t size = (uint32_t) tf->a2;
-		if(fd < 0 || fd >= FD_MAX){
-			
-			tf->a0 = -1;
+
+        if (!user_range_ok((uintptr_t)buffer, size, PTE_R)) { tf->a0 = E_FAULT; return tf; }
+
+        if(fd < 0 || fd >= FD_MAX){
+
+			tf->a0 = E_BADF;
 			return tf;
 		}
 		file_t *file = &current_proc->open_files[fd];
 
 		if(file->type == FILE_TYPE_NONE){
-			tf->a0 = -1;
+			tf->a0 = E_BADF;
 			return tf;
 		}
 
@@ -638,14 +674,14 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 			return tf;
 		}
 		if (file->type == FILE_TYPE_RAMDISK) {
-                	
+
 			sbi_puts(" Not possible yet");
 
-			tf->a0 = -1; // Permission Denied
+			tf->a0 = E_PERM;
                 	return tf;
             	}
-            
-            	tf->a0 = -1;
+
+            	tf->a0 = E_BADF;
             	return tf;
 
 	}
@@ -653,14 +689,14 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 	{
 		int fd = (int) tf->a0;
 		if (fd < 0 || fd >= FD_MAX) {
-                	tf->a0 = -1;
+                	tf->a0 = E_BADF;
                 	return tf;
             	}
-            
+
             	file_t *file = &current_proc->open_files[fd];
-            
+
             	if (file->type == FILE_TYPE_NONE) {
-                	tf->a0 = -1; 
+                	tf->a0 = E_BADF;
                 	return tf;
             	}
             

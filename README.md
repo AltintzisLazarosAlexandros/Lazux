@@ -52,12 +52,17 @@ What exists so far:
 - **User-Space VFS Test Program** (Reads ELF magic from RAMDISK via `open`/`read`)
 - **RAMDISK Build Tooling** (`mkramdisk` packs ELFs into `ramdisk.img`)
 - **Comprehensive Code Documentation** (20 kernel files with 1,800+ lines of self-documenting comments covering architecture, algorithms, register mechanics, design rationale, and fork/exec mechanisms)
+- **Syscall Pointer Validation** (`vmm_lookup()` + `user_range_ok()`/`user_str_ok()` verify user-supplied pointers are mapped, user-accessible, and correctly permissioned before the kernel dereferences them — a bad pointer now fails the syscall instead of taking down the kernel)
+- **Formalized Syscall Error Codes** (`include/errno.h`: `E_NOENT`, `E_BADF`, `E_FAULT`, `E_NOMEM`, `E_PERM`, `E_AGAIN` — replacing blanket `-1` returns)
+- **W^X Enforcement** (kernel identity map splits `.text` (R+X), `.rodata`/RAMDISK (R-only), and `.data`/`.bss`/free RAM (R+W) instead of one RWX region; user ELF segments can no longer be mapped both writable and executable)
 
 ### Current Focus: Phase 6 - Filesystem and I/O Expansion
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
 
 Phase 6 steps involve:
-- Expanding file descriptor semantics (errors, permissions, and RAMDISK write policy).
+- Formalized file descriptor error codes (`include/errno.h`).
+- Syscall pointer validation and W^X enforcement (kernel map + ELF loader).
+- Expanding RAMDISK write policy (currently permanently read-only, returns `E_PERM`).
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
 - Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).

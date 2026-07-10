@@ -546,3 +546,54 @@ Completed Phase 5 by replacing dual-ELF embedding with a RAMDISK image pipeline 
 
 ### Phase 6 Starts Here
 Phase 6 focuses on file descriptor syscalls, a RAMDISK-backed filesystem API, and asynchronous I/O.
+
+---
+
+## 10-07-2026 — Phase 6: Security & Robustness Hardening
+
+### Summary
+Full audit pass over `kernel/` following the SYS_WRITE/SYS_CLOSE milestone. Closed the syscall-pointer-validation gap flagged in the previous entry, formalized syscall error codes, and fixed several latent correctness bugs in the VMM/PMM/ELF loader found during the review. Verified with a clean `-Wall -Wextra -Werror` rebuild and a full QEMU boot (fork → exec → RAMDISK VFS test → graceful shutdown).
+
+### Implemented
+
+**Syscall pointer validation (closes the "copy-in validation" TODO):**
+- Added `vmm_lookup()` (`mm/vmm.c`) — a read-only Sv39 page-table walk that returns `0` on any unmapped level instead of allocating, unlike `map_page()`.
+- Added `user_range_ok()` / `user_str_ok()` (`arch/riscv/trap_handler.c`) to verify a user-supplied pointer range is mapped, `PTE_U`, and has the required `PTE_R`/`PTE_W` permission before the kernel ever dereferences it.
+- Wired these checks into `SYS_OPEN`, `SYS_READ`, `SYS_WRITE`, and `SYS_EXEC` — a bad/unmapped user pointer now fails the syscall with `E_FAULT` instead of causing an S-mode page fault (which previously escalated to a full kernel halt, since S-mode faults are treated as fatal kernel bugs).
+
+**SUM bit no longer leaks permanently:**
+- `arch/riscv/trap_handler.c` sets the `sstatus.SUM` bit (bit 18) on every syscall entry so the kernel can read/write U-mode pages, but nothing ever cleared it again.
+- `switch_to_user()` (`arch/riscv/switch.S`) now explicitly clears `SUM` as part of the same read-modify-write it already does for `SPP`/`SPIE`, so `SUM` is guaranteed off whenever U-mode code is actually running.
+
+**Formalized syscall error codes:**
+- Added `include/errno.h`: `E_OK`, `E_NOENT`, `E_BADF`, `E_FAULT`, `E_NOMEM`, `E_PERM`, `E_AGAIN`.
+- Replaced every blanket `tf->a0 = -1;` in `trap_handler.c` with the matching code (bad fd → `E_BADF`, bad pointer → `E_FAULT`, RAMDISK write → `E_PERM`, OOM → `E_NOMEM`, no proc slot → `E_AGAIN`, no such file/child → `E_NOENT`). User-space only ever checked `< 0`, so this is backward compatible.
+
+**Fork null-check ordering bug fixed:**
+- `SYS_FORK` (`trap_handler.c`) dereferenced the freshly-allocated `child` PCB (`child->parent_pid = ...`, FD-table copy loop) *before* checking whether `alloc_proc()` returned `NULL`. A full process table used to trigger a NULL dereference (S-mode fault → kernel halt) instead of a clean `E_AGAIN`. The null check now runs first.
+
+**Kernel identity map now enforces W^X (previously fully RWX):**
+- `linker.ld` exports page-aligned `__text_start/__text_end` and `__rodata_start/__rodata_end` symbols.
+- `vmm_map_kernel()` (`mm/vmm.c`) now maps `.text` as `R+X`, `.rodata` (which includes the embedded RAMDISK) as `R`-only, and everything from `.rodata`'s end through the rest of physical RAM (`.data`/`.bss`/kernel stack/dynamically-allocated pages) as `R+W` — never `R+W+X` together. Previously the *entire* 128MB region was mapped `R+W+X` in every process's page table.
+
+**ELF loader now enforces W^X on user segments:**
+- `load_elf()` (`proc/process.c`) built PTE flags straight from the ELF's `PF_R`/`PF_W`/`PF_X` bits with no cross-check. A segment marked both writable and executable would map that way. Now `PTE_X` is dropped whenever `PTE_W` is also requested.
+
+**`map_page()` OOM is no longer silently ignored:**
+- `load_elf()` and the `SYS_SBRK` handler called `map_page()` without checking its `-1`-on-OOM return value, so a failed intermediate-page-table allocation would let `heap_break`/segment state advance as if the mapping succeeded (later triggering an unexpected user page fault) and leak the physical page that had already been allocated for the failed mapping. Both call sites now check the return value, free the orphaned page, and fail cleanly (`E_NOMEM` for `SYS_SBRK`, `-1` for `load_elf`).
+
+**`pmm_alloc_page()` index-0 ambiguity fixed:**
+- The old scan used `index = 0` as both the initial "not found yet" sentinel and a legitimate page index, so it couldn't distinguish "free page found at index 0" from "no free page anywhere" — both returned index 0. Masked today because `init_pmm()` always pre-reserves page 0, but latent: a stray `pmm_free_page()` on page 0 would have caused a silent leak plus a false OOM report. Now returns immediately from inside the scan loop instead of using a sentinel.
+
+**Stale comment fixed in `vmm_copy_uvm()`:** said the fork copy-guard was `VPN[2] < 256`; the actual guard (`i >= 2`) cuts at `2`, not `256`. Comment corrected to match the code.
+
+**Build system fix:** `kernel/Makefile`'s first rule was `user/init.elf`, not `all`, so a bare `make` silently skipped rebuilding `kernel.elf` when only kernel sources changed. Added `.DEFAULT_GOAL := all`.
+
+### Verification
+- Clean `make` rebuild with `-Wall -Wextra -Werror`: zero warnings (the previous "LOAD segment with RWX permissions" linker warning is also gone).
+- Confirmed via `nm kernel.elf` that `.text` (`0x80200000-0x80203000`), `.rodata`+RAMDISK (`0x80203000-0x80214000`), and `.data`/`.bss`/stack (`0x80214000-0x80230000`) are page-aligned with no gaps or overlap.
+- Full QEMU boot: MMU activation, fork, filename-based exec, RAMDISK VFS test (open/read/close), graceful process exit, clean shutdown — all still work under the tightened permissions.
+
+### Notes
+- `map_identity_range()` centralizes the per-region kernel-mapping loop; `vmm_map_kernel()` no longer contains a raw hardcoded `0x80200000`/`0x88000000` pair.
+- The remaining Phase 6 error-handling gap (RAMDISK write policy) is now expressed as `E_PERM` rather than a bare `-1`, but the underlying "read-only RAMDISK" policy itself is unchanged.

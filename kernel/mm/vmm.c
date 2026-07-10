@@ -45,6 +45,17 @@ static void free_page_table(page_table_t *pt, int level)
 
 }
 
+pte_t* vmm_lookup(page_table_t *root, uintptr_t va)
+{
+    page_table_t *table = root;
+    for (int level = 2; level > 0; level--) {
+        pte_t *pte = &table->pte_entries[VPN(va, level)];
+        if (!(*pte & PTE_V)) return 0;
+        table = (page_table_t *)PTE_TO_PA(*pte);
+    }
+    return &table->pte_entries[VPN(va, 0)];
+}
+
 /*
  * map_page() - Map virtual address to physical address in page table
  * 
@@ -148,46 +159,55 @@ int map_page(page_table_t *root, uintptr_t va, uintptr_t pa, uint64_t flags)
 	return 0;
 }
 
+extern uint8_t __text_start[], __text_end[];
+extern uint8_t __rodata_start[], __rodata_end[];
+
+/* Identity-map [start, end) with the given flags, one page at a time. */
+static void map_identity_range(page_table_t *pt, uintptr_t start, uintptr_t end, uint64_t flags)
+{
+    for (uintptr_t addr = start; addr < end; addr += 4096) {
+        if (map_page(pt, addr, addr, flags) == -1) {
+            sbi_puts("PANIC: vmm_map_kernel out of memory!\n");
+            while (1);
+        }
+    }
+}
+
 /*
  * vmm_map_kernel() - Identity-map kernel memory in page table
- * 
+ *
  * Maps kernel code+data+heap into virtual address space.
  * Used during boot to enable virtual memory while keeping kernel accessible.
- * 
+ *
  * Strategy: Identity mapping (VA = PA)
  *   Virtual 0x80200000 → Physical 0x80200000 (kernel starts here in QEMU virt)
  *   Virtual 0x88000000 → Physical 0x88000000 (RAM end at 128MB)
- * 
+ *
  * This is the "upper half" kernel mapping: all addresses ≥ 0x80000000 are kernel-only.
  * When process runs, it has its own page table with different low-memory mappings.
  * But all processes share kernel's high-memory identity-mapped region.
- * 
+ *
+ * W^X: each region gets only the permissions it needs — .text is R+X (never
+ * writable), .rodata is R-only (never writable or executable), and everything
+ * else (.data/.bss/stack and the rest of free RAM used for page tables, kernel
+ * stacks, and process memory) is R+W (never executable in the kernel's own
+ * mapping). This matches the W^X discipline already used for per-process
+ * kernel stacks.
+ *
  * args:
  *   pt - pointer to root page table to populate
- * 
+ *
  * returns: none (panics on memory exhaustion)
- * 
+ *
  * Side effects: Modifies page table in-place; allocates intermediate tables as needed
  */
 void vmm_map_kernel(page_table_t* pt) {
-    /* Kernel memory region: QEMU virt platform */
-    uintptr_t kernel_start = 0x80200000;     /* Kernel entry point (after OpenSBI M-mode) */
-    uintptr_t physical_ram_end = 0x88000000; /* 128MB total (0x80000000 + 0x8000000) */
-    
-    /* 
-     * Map each 4KB page in kernel region.
-     * Creates identity mappings: VA 0xNNNNN000 → PA 0xNNNNN000.
-     * Set readable, writable, executable (kernel has full access).
-     * Do NOT set user bit: U-mode cannot access these addresses.
-     */
-    for (uintptr_t addr = kernel_start; addr < physical_ram_end; addr += 4096) {
-        /* map_page walks/creates 3-level table, stores identity mapping */
-        int status = map_page(pt, addr, addr, PTE_R | PTE_W | PTE_X);
-        if (status == -1) {
-            sbi_puts("PANIC: vmm_map_kernel out of memory!\n");
-            while(1);
-        }
-    }
+    uintptr_t physical_ram_end = PHYSICAL_RAM_START + PHYSICAL_RAM_SIZE; /* 128MB total */
+
+    map_identity_range(pt, (uintptr_t)__text_start, (uintptr_t)__text_end, PTE_R | PTE_X);
+    map_identity_range(pt, (uintptr_t)__rodata_start, (uintptr_t)__rodata_end, PTE_R);
+    map_identity_range(pt, (uintptr_t)__rodata_end, (uintptr_t)_end, PTE_R | PTE_W);
+    map_identity_range(pt, (uintptr_t)_end, physical_ram_end, PTE_R | PTE_W);
 }
 
 void vmm_free_pt(page_table_t *root)
@@ -200,7 +220,7 @@ void vmm_free_pt(page_table_t *root)
 void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
 {
     for (int i = 0; i < 512; i++) {
-        /* Shield kernel memory: only copy user-space mappings (VPN[2] < 256) */
+        /* Shield kernel memory: only copy user-space mappings (VPN[2] < 2, i.e. VA < 2GB) */
 		if (level == 2 && i >= 2)
             continue;
 

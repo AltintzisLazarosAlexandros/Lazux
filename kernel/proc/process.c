@@ -257,16 +257,26 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
                     memcpy(phys_page, (void*)(elf_data + offset + current_offset), copy_size);
                 }
 
-                /* 
+                /*
                  * Map page into process's virtual address space.
-                 * Flags: user-accessible, readable, writable, executable.
-                 * Process can read/write/execute its own segments.
+                 * Flags: user-accessible, readable, writable, executable
+                 * (as requested by the segment's own permission bits).
                  */
 				uint64_t flags = PTE_U;
 				if (phdr[i].p_flags & PF_R) flags |= PTE_R;
 				if (phdr[i].p_flags & PF_W) flags |= PTE_W;
 				if (phdr[i].p_flags & PF_X) flags |= PTE_X;
-				map_page(p->page_table, vaddr + current_offset, (uintptr_t)phys_page, flags);
+
+				/* Enforce W^X: never allow a segment to be both writable and executable. */
+				if ((flags & (PTE_W | PTE_X)) == (PTE_W | PTE_X)) {
+					flags &= ~PTE_X;
+				}
+
+				if (map_page(p->page_table, vaddr + current_offset, (uintptr_t)phys_page, flags) != 0) {
+					sbi_puts("PANIC: Out of memory mapping ELF segment!\n");
+					pmm_free_page(phys_page);
+					return -1;
+				}
             }
 			uintptr_t segment_end = vaddr + size;
             if (segment_end > max_end) {
