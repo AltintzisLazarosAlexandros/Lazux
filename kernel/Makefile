@@ -88,6 +88,7 @@ OBJS = \
     arch/riscv/trap_handler.o \
     arch/riscv/payload.o \
     arch/riscv/cpu.o \
+    arch/riscv/plic.o \
     mm/pmm.o \
     mm/vmm.o \
     proc/process.o \

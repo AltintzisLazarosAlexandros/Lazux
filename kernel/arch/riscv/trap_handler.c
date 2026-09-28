@@ -167,16 +167,18 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
      */
     if (is_interrupt) {
         if (exception_code == 5) { /* Supervisor Timer Interrupt */
+#if DEBUG_SCHED
             sbi_puts("\n[TICK] Timer Interrupt Fired! 10ms passed.\n");
-            
-            /* 
+#endif
+
+            /*
              * Read current time from mtime register (via sbi_ecall internally in read_time).
              * Schedule next timer interrupt 10ms in future (100,000 machine ticks at 10MHz).
              * This fires periodically to enable preemptive multitasking.
              */
             uint64_t now = read_time();
-            sbi_set_timer(now + 100000); 
-            
+            sbi_set_timer(now + TIMER_INTERVAL);
+
             /* 
              * Call scheduler to pick next process to run.
              * Returns next process's trapframe. If same process, nothing changes.
@@ -268,16 +270,24 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             puthex(current_proc->pid); 
             sbi_puts(" became a ZOMBIE.\n");
             
-            current_proc->state = PROC_ZOMBIE; 
-            
-            extern process_t process_table[64];
-            for(int i = 0; i < 64; i++) {
-                if(process_table[i].pid == current_proc->parent_pid && 
-                   process_table[i].state == PROC_BLOCKED) {
-                    process_table[i].state = PROC_READY;
+            current_proc->state = PROC_ZOMBIE;
+
+            /*
+             * Wake the parent if it is sitting in wait(). A parent sleeps on
+             * its own PCB address, so that pointer is the channel. wakeup() is
+             * a no-op when the parent is not actually waiting.
+             */
+            {
+                extern process_t process_table[MAX_PROCS];
+                for(int i = 0; i < MAX_PROCS; i++) {
+                    if(process_table[i].pid == current_proc->parent_pid &&
+                       process_table[i].state != PROC_UNUSED) {
+                        wakeup(&process_table[i]);
+                        break;
+                    }
                 }
             }
-            
+
             return schedule(tf);
         
         case SYS_FORK: /* SYS_FORK: create child process */
@@ -361,6 +371,15 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 return tf;
             }
             child->parent_pid = current_proc->pid;
+
+            /*
+             * Inherit the parent's heap layout. vmm_copy_uvm() below clones the
+             * pages themselves, so without these two fields the child would own
+             * heap memory it did not know about and sbrk() from a fresh (or
+             * recycled) break - which broke malloc() in every forked child.
+             */
+            child->heap_break = current_proc->heap_break;
+            child->heap_max   = current_proc->heap_max;
 
             for (int i = 0; i < FD_MAX; i++) {
                 child->open_files[i] = current_proc->open_files[i];
@@ -493,10 +512,10 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
         }
         case SYS_WAIT: /* SYS_WAIT */
         {
-            extern process_t process_table[64];
+            extern process_t process_table[MAX_PROCS];
             int have_kids = 0;
-            
-            for(int i = 0; i < 64; i++) {
+
+            for(int i = 0; i < MAX_PROCS; i++) {
                 if(process_table[i].parent_pid == current_proc->pid && process_table[i].state != PROC_UNUSED) {
                     have_kids = 1;
                     
@@ -516,10 +535,15 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 return tf;
             }
             
-            current_proc->state = PROC_BLOCKED;
-            
-            tf->sepc -= 4; 
-            
+            /*
+             * Children exist but none has exited yet. Sleep on our own PCB -
+             * the channel a child's SYS_EXIT wakes - and rewind sepc so this
+             * ecall re-runs on wake and re-scans for the zombie.
+             */
+            sleep_on(current_proc);
+
+            tf->sepc -= 4;
+
             return schedule(tf);
         }
         case SYS_SBRK: /* SYS_SBRK */

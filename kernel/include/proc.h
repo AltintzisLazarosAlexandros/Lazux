@@ -10,7 +10,8 @@
  * Process State Machine:
  * UNUSED -> (alloc_proc) -> READY -> (scheduler picks) -> RUNNING
  * RUNNING -> (timer tick) -> READY
- * RUNNING -> (SYS_EXIT) -> UNUSED
+ * RUNNING -> (sleep_on) -> BLOCKED -> (wakeup) -> READY
+ * RUNNING -> (SYS_EXIT) -> ZOMBIE -> (parent's SYS_WAIT reaps) -> UNUSED
  * RUNNING -> (exception) -> UNUSED
  */
 
@@ -19,6 +20,22 @@
 
 /* External assembly context switch routine */
 extern void switch_to_user(trap_frame_t* tf, uint64_t satp_val);
+
+/* Size of the process table: the hard ceiling on concurrent processes. */
+#define MAX_PROCS 64
+
+/*
+ * Timer quantum, in mtime ticks. QEMU virt runs mtime at 10MHz, so 100,000
+ * ticks is ~10ms. Used both to arm the first timer at boot and to re-arm it
+ * on every tick and from the idle loop.
+ */
+#define TIMER_INTERVAL 100000
+
+/*
+ * Set to 1 to restore the per-tick and per-schedule tracing from Phase 4.
+ * Off by default: at 100Hz it drowns out any interactive console.
+ */
+#define DEBUG_SCHED 0
 
 #define FD_MAX 16
 
@@ -70,6 +87,15 @@ typedef struct{
 	uintptr_t heap_break; /* Current end of heap (for sbrk/brk system calls) */
 	uintptr_t heap_max;   /* Upper heap limit (guard against stack/region overlap) */
 
+	/*
+	 * Wait channel: the address this process is blocked on, or 0 if it is
+	 * not blocked. Any kernel address can serve as a channel; the only rule
+	 * is that whoever puts a process to sleep on it must be the one that
+	 * wakes it. Two current channels: a parent's own PCB (SYS_WAIT) and the
+	 * UART receive ring (console reads).
+	 */
+	void *chan;
+
 	file_t open_files[FD_MAX]; /* Open file descriptors (console + RAMDISK) */
 }process_t;
 
@@ -80,3 +106,25 @@ int load_elf(process_t* p, const uint8_t *elf_data);      /* Load ELF binary int
 trap_frame_t* schedule(trap_frame_t* inter_tf);           /* Scheduler: select next process to run */
 void free_proc(process_t* p);                                  /* Free process resources */
 void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level); /* Copy user memory for fork */
+
+/*
+ * sleep_on() - Block current_proc on a wait channel.
+ *
+ * Marks the running process BLOCKED and records the channel. The caller is
+ * responsible for two further things:
+ *   1. rewinding sepc by 4 so the process re-executes its ecall on wake, and
+ *   2. returning schedule(tf) so another process is picked.
+ *
+ * The sepc rewind means a woken process re-checks its own condition instead of
+ * the kernel having to stash partial syscall state, which also makes spurious
+ * wakeups harmless.
+ */
+void sleep_on(void *chan);
+
+/*
+ * wakeup() - Make every process blocked on 'chan' runnable again.
+ *
+ * Safe to call when nothing is sleeping on the channel. Callable from
+ * interrupt context (the UART ISR uses it).
+ */
+void wakeup(void *chan);

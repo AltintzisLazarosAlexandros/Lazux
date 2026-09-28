@@ -23,7 +23,7 @@
 #include "string.h"
 #include "elf.h"
 
-#define MAX_PROCS 64
+/* MAX_PROCS now lives in proc.h so the syscall layer can size its scans too. */
 
 /* Generic SBI ecall: used for system shutdown (SYS_RESET) */
 extern long sbi_ecall(long eid, long fid,
@@ -31,7 +31,7 @@ extern long sbi_ecall(long eid, long fid,
                              long arg3, long arg4, long arg5);
 
 /* Global process table: array of MAX_PROCS process control blocks */
-process_t process_table[64];
+process_t process_table[MAX_PROCS];
 
 /* Next PID to assign (auto-increment for uniqueness) */
 static int next_pid = 1;
@@ -321,9 +321,105 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
 	return 0;
 }
 
+/* Read the machine timer (mtime). Defined in arch/riscv/cpu.c. */
+extern uint64_t read_time(void);
+
+/* Claim and service one pending PLIC interrupt. Defined in arch/riscv/plic.c. */
+extern void plic_dispatch(void);
+
+/*
+ * sleep_on() - Block the running process on a wait channel.
+ *
+ * See the contract in proc.h: the caller still owes an sepc rewind and a
+ * schedule() call. Keeping those with the caller (rather than doing them here)
+ * means sleep_on stays usable from any syscall shape.
+ */
+void sleep_on(void *chan){
+	if(current_proc == 0) return;
+
+	current_proc->state = PROC_BLOCKED;
+	current_proc->chan = chan;
+}
+
+/*
+ * wakeup() - Make every process blocked on 'chan' runnable again.
+ *
+ * Wakes all sleepers rather than just one. Each woken process re-executes its
+ * ecall and re-checks its own condition, so a process that loses the race
+ * simply goes back to sleep - no lost-wakeup window, no queue to maintain.
+ */
+void wakeup(void *chan){
+	for(int i = 0; i < MAX_PROCS; i++){
+		if(process_table[i].state == PROC_BLOCKED && process_table[i].chan == chan){
+			process_table[i].state = PROC_READY;
+			process_table[i].chan = 0;
+		}
+	}
+}
+
+/* Round-robin scan for the next READY slot, starting just after 'from'. */
+static process_t* find_ready(int from){
+	int idx = from;
+
+	for(int i = 0; i < MAX_PROCS; i++){
+		idx = (idx + 1) % MAX_PROCS; /* Advance, wrap at MAX_PROCS */
+		if (process_table[idx].state == PROC_READY) {
+			return &process_table[idx];
+		}
+	}
+
+	return 0;
+}
+
+/* Is anything waiting on a channel? If so, idling is worth doing. */
+static int any_blocked(void){
+	for(int i = 0; i < MAX_PROCS; i++){
+		if (process_table[i].state == PROC_BLOCKED) return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * idle_service() - Wait for an interrupt, then service it by hand.
+ *
+ * Deliberately does NOT set sstatus.SIE around the wfi. That is the obvious
+ * way to write this and it is a trap: with SIE set, an interrupt arriving here
+ * would re-enter trap_entry while we are already on a kernel stack inside
+ * schedule(), and trap.S would clobber sscratch out from under the process we
+ * interrupted.
+ *
+ * Instead we lean on wfi waking for any interrupt enabled in sie regardless of
+ * sstatus.SIE - the hart just resumes at the next instruction and no trap is
+ * taken. Since no trap is taken, no handler runs on its own, so we dispatch the
+ * pending sources ourselves. plic_dispatch() here is the same function the
+ * cause-9 handler calls, so there is one copy of the device logic with two
+ * entry points into it.
+ */
+static void idle_service(void){
+	uint64_t sip;
+
+	__asm__ volatile("wfi");
+	__asm__ volatile("csrr %0, sip" : "=r"(sip));
+
+	/*
+	 * Timer. Re-arming through SBI is also what clears the pending STIP bit;
+	 * without this the next wfi would return instantly and we would spin hot
+	 * instead of idling between ticks.
+	 */
+	if (sip & (1UL << 5)) {
+		sbi_set_timer(read_time() + TIMER_INTERVAL);
+	}
+
+	/* External. Drains the device, which is what ends up calling wakeup(). */
+	if (sip & (1UL << 9)) {
+		plic_dispatch();
+	}
+}
+
 /*
  * schedule() - Round-robin process scheduler
- * 
+ *
  * Selects next process to run. Implements simple round-robin:
  * cycle through process table, skip non-READY/RUNNING processes.
  * 
@@ -346,61 +442,69 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
  * ensuring all processes get equal CPU time over time.
  */
 trap_frame_t* schedule(trap_frame_t* inter_tf){
+#if DEBUG_SCHED
 	sbi_puts("[schedule] Called, current_proc pid=");
 	if(current_proc) puthex(current_proc->pid);
 	else sbi_puts("(null)");
 	sbi_puts("\n");
-	
+#endif
+
 	/* If no process yet created: kernel running, keep current state */
 	if(current_proc == 0){
 		return inter_tf;
 	}
 
-	/* 
+	/*
 	 * Save current process's state.
 	 * Copy registers from interrupt trapframe to process PCB.
 	 * Next time this process runs, trap_handler will use saved state.
 	 */
 	current_proc->trap_frame = *inter_tf;
-	
+
 	if (current_proc->state == PROC_RUNNING) {
         	current_proc->state = PROC_READY;
     	}
 
-	/* 
-	 * Find next process to run (round-robin starting from next slot).
-	 * current_index = current process's index in process_table[].
-	 * next_index = candidate process's index (circles through 0..63).
+	/*
+	 * Find next process to run (round-robin starting from the slot after
+	 * the current one, so every process gets an equal turn over time).
 	 */
 	int current_index = (current_proc - process_table);
-	int next_index = current_index;
-	process_t* next_proc = 0;
+	process_t* next_proc = find_ready(current_index);
 
-	/* Scan for READY process */
-	for(int i = 0; i < MAX_PROCS; i++){
-		next_index = (next_index + 1) % MAX_PROCS; /* Advance, wrap at 64 */
-		if (process_table[next_index].state == PROC_READY) {
-            		next_proc = &process_table[next_index];
-            		break;
-        	}
-    	}
-
-	/* No READY process found */
-	if(next_proc == 0){
+	/*
+	 * Nothing else is runnable. Three cases, in order:
+	 *   1. the current process can simply keep going;
+	 *   2. something is blocked waiting on a channel, so idle until an
+	 *      interrupt wakes it (this is what makes blocking survivable);
+	 *   3. genuinely nothing left to run - shut the machine down.
+	 */
+	while(next_proc == 0){
 		/* Current process still available? Run it again */
 		if (current_proc->state == PROC_READY || current_proc->state == PROC_RUNNING) {
            		current_proc->state = PROC_RUNNING;
+#if DEBUG_SCHED
             		sbi_puts("[schedule] No other ready, keeping current proc\n");
+#endif
             		return inter_tf; /* Keep current process */
         	}
-		/* No processes ready: all have exited */
-		else {
+
+		/* No processes ready and none waiting on anything: all have exited */
+		if (!any_blocked()) {
             		sbi_puts("\n[kernel] All processes have finished. System Halting.\n");
-            		
+
             		/* Issue SYS_RESET to OpenSBI (clean shutdown) */
 			sbi_ecall(0x53525354, 0, 0, 0, 0, 0, 0, 0);
 			while(1); /* Hang if SYS_RESET fails */
 		}
+
+		/*
+		 * Somebody is blocked. Sleep until an interrupt arrives, service
+		 * it, then re-scan. A wakeup() from inside idle_service() is what
+		 * eventually breaks this loop.
+		 */
+		idle_service();
+		next_proc = find_ready(current_index);
 	}
 
 	/* Switch to next process */
@@ -442,6 +546,22 @@ void free_proc(process_t* p) {
 		p->page_table = 0;
 	}
 
+	/*
+	 * Scrub the rest of the PCB. Slots get recycled by alloc_proc(), and
+	 * anything left behind here is inherited by an unrelated future process:
+	 * a stale heap_break in particular used to hand a child a bogus heap.
+	 */
 	p->state = PROC_UNUSED;
 	p->pid = 0;
+	p->parent_pid = 0;
+	p->chan = 0;
+	p->heap_break = 0;
+	p->heap_max = 0;
+
+	for(int i = 0; i < FD_MAX; i++){
+		p->open_files[i].type = FILE_TYPE_NONE;
+		p->open_files[i].offset = 0;
+		p->open_files[i].size = 0;
+		p->open_files[i].data = 0;
+	}
 }
