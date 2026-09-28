@@ -36,10 +36,10 @@ make clean
 | `arch/riscv/plic.c` | PLIC driver — **currently empty stubs** (Stage B) |
 | `arch/riscv/payload.S` | `.incbin ramdisk.img` → `_ramdisk_start/_ramdisk_end` |
 | `mm/pmm.c` | bitmap page allocator, 4KB frames, 128MB tracked |
-| `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel`, `vmm_copy_uvm` |
+| `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
 | `proc/process.c` | process table, `alloc_proc`, `load_elf`, `schedule`, `sleep_on`/`wakeup`, `free_proc` |
 | `main.c` | `kmain`: PMM → VMM/MMU → procs → load `init.elf` from RAMDISK → arm timer → U-mode |
-| `include/` | `proc.h` (PCB, constants), `syscall.h`, `errno.h`, `vmm.h`, `mkramdisk.h`, `plic.h`, … |
+| `include/` | `proc.h` (PCB, constants), `platform.h` (board memory map: UART0/PLIC base, size, IRQ), `syscall.h`, `errno.h`, `vmm.h`, `mkramdisk.h`, `plic.h`, … |
 | `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers), `lazux.h`, `main.c` (init), `test2.c` |
 | `../tools/mkramdisk.c` | host tool packing ELFs into `ramdisk.img` |
 
@@ -59,6 +59,9 @@ make clean
 - Constants in `proc.h`: `MAX_PROCS 64`, `FD_MAX 16`, `TIMER_INTERVAL 100000` (~10ms), `DEBUG_SCHED 0`.
 - Process states: `UNUSED → READY ⇄ RUNNING → BLOCKED → READY`; `RUNNING → ZOMBIE` on exit, reaped by parent's `SYS_WAIT`.
 - RAMDISK is read-only (writes return `E_PERM`).
+- Device MMIO (UART `0x10000000`, PLIC `0x0C000000`, see `platform.h`) is identity-mapped R+W, never X/U, in every
+  page table. It sits under the same root entry (VPN[2]=0) as user memory, so `vmm_copy_uvm` must **merge** into
+  the child's existing tables, never overwrite them, or forked children lose the device mappings.
 
 ## Syscalls (`a7` = number, args `a0`–`a6`, return in `a0`)
 
@@ -84,14 +87,15 @@ Errors (`errno.h`): `E_NOENT -1`, `E_BADF -2`, `E_FAULT -3`, `E_NOMEM -4`, `E_PE
 Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 
 - ✅ Hardening (commit `969ce51`): pointer validation, errno codes, W^X, several VMM/PMM/fork fixes.
-- ✅ **Stage A — blocking I/O groundwork (uncommitted):** `sleep_on`/`wakeup` wait channels + `chan`
+- ✅ **Stage A — blocking I/O groundwork (commit `5fe6a11`):** `sleep_on`/`wakeup` wait channels + `chan`
   field in PCB; scheduler split into `find_ready`/`any_blocked`/`idle_service` so the kernel idles
   instead of halting while processes are blocked; `SYS_WAIT`/`SYS_EXIT` use channels; forked child
   inherits `heap_break`/`heap_max` (malloc was broken in children); `free_proc` scrubs the whole PCB.
   Boot-tested OK.
-- ⏳ **Stage B — interactive UART console (next):**
-  1. Map PLIC (`0x0C000000`) and UART (`0x10000000`) MMIO in `vmm_map_kernel()`.
-  2. Implement `plic_init` (priorities, enable for S-mode context 1, threshold 0) and `plic_dispatch` (claim → route → complete).
+- 🔨 **Stage B — interactive UART console (in progress):**
+  1. ✅ `include/platform.h` + UART/PLIC MMIO mapped in `vmm_map_kernel()`; fork fix: `vmm_copy_uvm`
+     merges instead of overwriting (children kept losing MMIO). Verified: UART write from kmain and from a forked child.
+  2. **Next:** implement `plic_init` (priorities, enable for S-mode context 1, threshold 0) and `plic_dispatch` (claim → route → complete).
   3. Set `SEIE` (bit 9) in `sie`; add the `scause` 9 (external interrupt) branch in `trap_handler()`.
   4. UART driver: RX ring buffer, ISR that calls `wakeup(&ring)`.
   5. Console `SYS_READ` (fd 0) blocks via `sleep_on` when the ring is empty.

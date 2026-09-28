@@ -20,6 +20,7 @@
 #include "sbi.h"
 #include "vmm.h"
 #include "pmm.h"
+#include "platform.h"
 #include "string.h"
 
 static void free_page_table(page_table_t *pt, int level)
@@ -208,6 +209,17 @@ void vmm_map_kernel(page_table_t* pt) {
     map_identity_range(pt, (uintptr_t)__rodata_start, (uintptr_t)__rodata_end, PTE_R);
     map_identity_range(pt, (uintptr_t)__rodata_end, (uintptr_t)_end, PTE_R | PTE_W);
     map_identity_range(pt, (uintptr_t)_end, physical_ram_end, PTE_R | PTE_W);
+
+    /*
+     * Device MMIO (addresses in platform.h). R+W only: device registers are
+     * never executable and never user-accessible.
+     *
+     * NOTE: both windows sit below 2GB, under the same VPN[2]=0 root entry as
+     * user memory. That is why vmm_copy_uvm() merges into existing child
+     * tables instead of overwriting them - otherwise fork would drop these.
+     */
+    map_identity_range(pt, UART0_BASE, UART0_BASE + UART0_SIZE, PTE_R | PTE_W);
+    map_identity_range(pt, PLIC_BASE, PLIC_BASE + PLIC_SIZE, PTE_R | PTE_W);
 }
 
 void vmm_free_pt(page_table_t *root)
@@ -239,10 +251,12 @@ void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
              * parent and child have independent memory.  This is what makes
              * fork() correct — writes by one process don't affect the other.
              *
-             * If PTE_U is NOT set it's a kernel-mapped leaf (e.g. MMIO or a
-             * kernel identity-mapped page that somehow ended up below VPN[2]=256,
-             * which shouldn't happen with your layout, but guard it anyway).
-             * Skip it — the child should never inherit kernel leaf mappings.
+             * If PTE_U is NOT set it's a kernel-mapped leaf - in practice the
+             * UART/PLIC MMIO pages, which live below 2GB alongside user memory.
+             * Skip it: the child already has its own copy of every kernel
+             * mapping from vmm_map_kernel() in alloc_proc(), and copying device
+             * memory byte-for-byte would read live registers (a PLIC claim
+             * register read even has side effects).
              */
             if (!(pte & PTE_U))
                 continue;
@@ -259,7 +273,18 @@ void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
             /*
              * Intermediate PTE: no R/W/X bits means this points to the next
              * level of the page table, not to user data.
-             * Allocate a fresh intermediate table for the child and recurse.
+             *
+             * MERGE, don't overwrite. The child's table is not empty: alloc_proc()
+             * already ran vmm_map_kernel() on it, and the MMIO windows (UART,
+             * PLIC) sit under the same VPN[2]=0 root entry as user memory. If the
+             * child already has a table at this slot, recurse into it so the
+             * kernel's MMIO mappings survive next to the copied user pages. Only
+             * allocate a fresh table when the slot is empty.
+             *
+             * (Overwriting it - the old behaviour - silently dropped the MMIO
+             * mappings in every forked child and leaked the tables they lived in.
+             * The first device interrupt taken while a child ran would then fault
+             * in S-mode and halt the kernel.)
              */
             if (level == 0) {
                 /*
@@ -272,15 +297,33 @@ void vmm_copy_uvm(page_table_t *parent_pt, page_table_t *child_pt, int level)
             }
 
             page_table_t *next_parent = (page_table_t *)PTE_TO_PA(pte);
-            page_table_t *next_child  = (page_table_t *)pmm_alloc_page();
-            if (next_child == 0) {
-                sbi_puts("PANIC: vmm_copy_uvm out of memory!\n");
-                while (1);
-            }
-            memset(next_child, 0, 4096);
+            page_table_t *next_child;
+            pte_t child_pte = child_pt->pte_entries[i];
 
-		    /* For intermediate tables, only the V bit is required. */
-		    child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)next_child) | PTE_V;
+            if (child_pte & PTE_V) {
+                /*
+                 * Slot already populated by vmm_map_kernel(). It must be a
+                 * table, not a leaf: a leaf here would mean the kernel mapped a
+                 * gigapage/megapage over what the parent treats as a table, and
+                 * the two layouts can't be merged. Never happens with 4KB-only
+                 * mappings, so halt loudly if it ever does.
+                 */
+                if ((child_pte & PTE_R) || (child_pte & PTE_W) || (child_pte & PTE_X)) {
+                    sbi_puts("PANIC: vmm_copy_uvm: child has a leaf where parent has a table!\n");
+                    while (1);
+                }
+                next_child = (page_table_t *)PTE_TO_PA(child_pte);
+            } else {
+                next_child = (page_table_t *)pmm_alloc_page();
+                if (next_child == 0) {
+                    sbi_puts("PANIC: vmm_copy_uvm out of memory!\n");
+                    while (1);
+                }
+                memset(next_child, 0, 4096);
+
+                /* For intermediate tables, only the V bit is required. */
+                child_pt->pte_entries[i] = PA_TO_PTE((uintptr_t)next_child) | PTE_V;
+            }
 
             vmm_copy_uvm(next_parent, next_child, level - 1);
         }
