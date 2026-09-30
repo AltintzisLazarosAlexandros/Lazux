@@ -17,6 +17,7 @@
 #include "proc.h"
 #include "elf.h"
 #include "mkramdisk.h"
+#include "plic.h"
 
 /* External symbols from other compilation units */
 extern void trap_entry(void);           /* Assembly trap handler entry point */
@@ -117,6 +118,15 @@ void kmain(void)
 
   // Install trap vector
   write_stvec((uintptr_t)trap_entry);
+
+  /*
+   * Configure the interrupt controller: UART0 gets a priority, is enabled for
+   * our S-mode context, and the threshold is dropped to 0. Needs the MMU on
+   * (the PLIC is reached through its identity mapping) and must come before
+   * any interrupt is enabled. Nothing fires yet: SEIE in sie (step 3) and the
+   * UART's own interrupt enable (step 4) are still off.
+   */
+  plic_init();
 
  sbi_puts("Initializing Process Subsystem...\n");
   

@@ -33,7 +33,7 @@ make clean
 | `arch/riscv/trap_handler.c` | scause dispatch; **all syscalls live here**; `user_range_ok`/`user_str_ok` |
 | `arch/riscv/switch.S` | `switch_to_user`: satp swap, `sfence.vma`, clears SUM/SPP, `sret` |
 | `arch/riscv/sbi.c`, `cpu.c` | OpenSBI ecalls (console, timer, reset), `read_time` |
-| `arch/riscv/plic.c` | PLIC driver — **currently empty stubs** (Stage B) |
+| `arch/riscv/plic.c` | PLIC driver: `plic_init` (UART0 priority/enable/threshold for context 1), `plic_dispatch` (claim → route → complete) |
 | `arch/riscv/payload.S` | `.incbin ramdisk.img` → `_ramdisk_start/_ramdisk_end` |
 | `mm/pmm.c` | bitmap page allocator, 4KB frames, 128MB tracked |
 | `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
@@ -82,7 +82,7 @@ Errors (`errno.h`): `E_NOENT -1`, `E_BADF -2`, `E_FAULT -3`, `E_NOMEM -4`, `E_PE
    `ramdisk.img` dependencies + `$(MKRAMDISK)` args, and to `clean`.
 3. Run it via `exec("foo.elf")`.
 
-## Current status (as of 2026-09-28)
+## Current status (as of 2026-09-30)
 
 Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 
@@ -95,8 +95,10 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 - 🔨 **Stage B — interactive UART console (in progress):**
   1. ✅ `include/platform.h` + UART/PLIC MMIO mapped in `vmm_map_kernel()`; fork fix: `vmm_copy_uvm`
      merges instead of overwriting (children kept losing MMIO). Verified: UART write from kmain and from a forked child.
-  2. **Next:** implement `plic_init` (priorities, enable for S-mode context 1, threshold 0) and `plic_dispatch` (claim → route → complete).
-  3. Set `SEIE` (bit 9) in `sie`; add the `scause` 9 (external interrupt) branch in `trap_handler()`.
+  2. ✅ `plic.c`: `plic_init()` (UART0 priority 1, enable bit 10 for context 1, threshold 0), called in `kmain`
+     after `write_stvec`; `plic_dispatch()` (claim, return on 0, switch-route, complete). Register macros in `plic.h`.
+     Verified by register readback (PRIO=1, EN=0x400, THR=0). The UART case is still a placeholder print.
+  3. **Next:** set `SEIE` (bit 9) in `sie`; add the `scause` 9 (external interrupt) branch in `trap_handler()`.
   4. UART driver: RX ring buffer, ISR that calls `wakeup(&ring)`.
   5. Console `SYS_READ` (fd 0) blocks via `sleep_on` when the ring is empty.
 - ⏳ Later Phase 6: RAMDISK write policy, basic filesystem API, heap limits/reclaim/guard pages.

@@ -10,8 +10,37 @@
  * with one hart, context 0 is hart0 M-mode and context 1 is hart0 S-mode. Lazux
  * runs in S-mode, so everything here targets context 1.
  */
-
 #pragma once
+#include "platform.h"
+
+/*
+ * Our context: hart 0 in S-mode. Contexts come in (M-mode, S-mode) pairs per
+ * hart, so the S-mode context of hart h is 2*h + 1.
+ */
+#define PLIC_SCONTEXT 1
+
+/*
+ * Register addresses. Each macro yields an address (a number), not a pointer:
+ * cast it to 'volatile uint32_t *' at the point of use. Every PLIC register is
+ * 32 bits wide, and 'volatile' stops the compiler from dropping or reordering
+ * accesses (a claim read has side effects).
+ *
+ * Layout: PLIC_BASE + region offset + index * stride
+ *
+ *   PLIC_PRIORITY(irq)    per source, 0 = never fire          stride 4
+ *   PLIC_SENABLE(ctx)     per context, bit array of sources   stride 0x80
+ *                         -> points at the FIRST enable word (IRQs 0-31); IRQ n
+ *                            is bit n % 32 of word n / 32. Word 0 is enough while
+ *                            the only source is the UART (IRQ 10).
+ *   PLIC_STHRESHOLD(ctx)  per context, only priority > threshold gets through
+ *                                                              stride 0x1000
+ *   PLIC_SCLAIM(ctx)      per context, read = claim (returns IRQ, 0 if none),
+ *                         write the same IRQ back = complete    stride 0x1000
+ */
+#define PLIC_PRIORITY(irq)    (PLIC_BASE + 4 * (irq))
+#define PLIC_SENABLE(ctx)     (PLIC_BASE + 0x2000 + 0x80 * (ctx))
+#define PLIC_STHRESHOLD(ctx)  (PLIC_BASE + 0x200000 + 0x1000 * (ctx))
+#define PLIC_SCLAIM(ctx)      (PLIC_BASE + 0x200004 + 0x1000 * (ctx))
 
 /*
  * plic_init() - Enable the devices Lazux cares about.
