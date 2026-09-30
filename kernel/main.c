@@ -18,6 +18,7 @@
 #include "elf.h"
 #include "mkramdisk.h"
 #include "plic.h"
+#include <stdint.h>
 
 /* External symbols from other compilation units */
 extern void trap_entry(void);           /* Assembly trap handler entry point */
@@ -123,12 +124,19 @@ void kmain(void)
    * Configure the interrupt controller: UART0 gets a priority, is enabled for
    * our S-mode context, and the threshold is dropped to 0. Needs the MMU on
    * (the PLIC is reached through its identity mapping) and must come before
-   * any interrupt is enabled. Nothing fires yet: SEIE in sie (step 3) and the
-   * UART's own interrupt enable (step 4) are still off.
+   * any interrupt is enabled.
    */
   plic_init();
 
- sbi_puts("Initializing Process Subsystem...\n");
+  /*
+   * Let the UART raise its interrupt line when a byte arrives: bit 0 of the
+   * Interrupt Enable Register (IER, offset 1) = "received data available".
+   * 8-bit access - UART registers are one byte wide. Nothing reaches the hart
+   * until SEIE is set in sie below.
+   */
+  *(volatile uint8_t *)(UART0_BASE + 1) = 1;
+
+  sbi_puts("Initializing Process Subsystem...\n");
   
   proc_init();
 
@@ -149,8 +157,16 @@ void kmain(void)
   current_proc->state = PROC_RUNNING; 
 
   satp_val = (8ULL << 60) | ((uintptr_t)current_proc->page_table >> 12);
-    
-  __asm__ volatile("csrs sie, %0" :: "r"(0x20)); 
+
+  /*
+   * Enable the interrupt types we handle in sie. csrs only SETS the given bits,
+   * so each line adds one type without touching the others:
+   *   bit 5 (STIE) - timer: drives preemptive scheduling
+   *   bit 9 (SEIE) - external: device interrupts forwarded by the PLIC
+   * They take effect in U-mode, where switch_to_user() turns on sstatus.SIE.
+   */
+  __asm__ volatile("csrs sie, %0" :: "r"(0x20));   /* STIE */
+  __asm__ volatile("csrs sie, %0" :: "r"(0x200));  /* SEIE */
   uint64_t now = read_time();
   sbi_set_timer(now + 100000); 
   sbi_puts("Timer interrupt armed for 10ms in the future!\n");

@@ -54,6 +54,11 @@ make clean
 - **Blocking pattern:** `sleep_on(chan); tf->sepc -= 4; return schedule(tf);` — the ecall re-runs on wake
   and re-checks its condition (spurious wakeups are harmless). `wakeup(chan)` wakes all sleepers.
   Channels in use: parent's PCB address (`SYS_WAIT`), UART RX ring (planned).
+- Interrupts enabled in `sie`: STIE (bit 5, timer) and SEIE (bit 9, PLIC). They only arrive in U-mode (the kernel never
+  sets `sstatus.SIE`), so traps never nest. scause 9 → `plic_dispatch()` → `return tf` (no reschedule).
+- Known weakness: a fault *inside* kernel trap handling makes `trap_entry` crash on `sscratch` (it no longer holds the
+  trapframe), so the FATAL shows `sepc` = `trap_entry`+4, `stval` = 0 and hides the original fault. If you see that
+  signature, the real bug is an S-mode fault during trap handling (e.g. a bad MMIO address).
 - `idle_service()` in the scheduler must **not** set `sstatus.SIE` (would re-enter `trap_entry` on a kernel
   stack and clobber `sscratch`). It `wfi`s and dispatches timer/PLIC by hand.
 - Constants in `proc.h`: `MAX_PROCS 64`, `FD_MAX 16`, `TIMER_INTERVAL 100000` (~10ms), `DEBUG_SCHED 0`.
@@ -95,11 +100,14 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 - 🔨 **Stage B — interactive UART console (in progress):**
   1. ✅ `include/platform.h` + UART/PLIC MMIO mapped in `vmm_map_kernel()`; fork fix: `vmm_copy_uvm`
      merges instead of overwriting (children kept losing MMIO). Verified: UART write from kmain and from a forked child.
-  2. ✅ `plic.c`: `plic_init()` (UART0 priority 1, enable bit 10 for context 1, threshold 0), called in `kmain`
+  2. ✅ (commit `4577a8e`) `plic.c`: `plic_init()` (UART0 priority 1, enable bit 10 for context 1, threshold 0), called in `kmain`
      after `write_stvec`; `plic_dispatch()` (claim, return on 0, switch-route, complete). Register macros in `plic.h`.
-     Verified by register readback (PRIO=1, EN=0x400, THR=0). The UART case is still a placeholder print.
-  3. **Next:** set `SEIE` (bit 9) in `sie`; add the `scause` 9 (external interrupt) branch in `trap_handler()`.
-  4. UART driver: RX ring buffer, ISR that calls `wakeup(&ring)`.
+     Verified by register readback (PRIO=1, EN=0x400, THR=0).
+  3. ✅ SEIE set next to STIE in `kmain`; UART receive interrupt enabled (IER, `UART0_BASE+1` = 1); `scause` 9 branch in
+     `trap_handler()` → `plic_dispatch()` → `return tf`. The UART case drains one byte (8-bit RBR read) and prints
+     `[plic] UART interrupt`; the byte is discarded. Verified: one interrupt per received byte, no storm, timer still preempts.
+  4. **Next:** UART driver: loop-drain while LSR (`UART0_BASE+5`) bit 0 is set, store bytes in an RX ring buffer, `wakeup(&ring)`;
+     replace the placeholder in `plic_dispatch()`'s UART case.
   5. Console `SYS_READ` (fd 0) blocks via `sleep_on` when the ring is empty.
 - ⏳ Later Phase 6: RAMDISK write policy, basic filesystem API, heap limits/reclaim/guard pages.
 - Minor cleanup: `main.c` still declares `extern process_t process_table[64]` — use `MAX_PROCS`.

@@ -21,6 +21,7 @@
 #include "trap_header.h"
 #include "sbi.h"
 #include "proc.h"
+#include "plic.h"
 #include "mkramdisk.h"
 #include "syscall.h"
 #include "errno.h"
@@ -186,8 +187,26 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              */
             return schedule(tf); 
         }
-        
-        /* Unknown interrupt type: kernel shouldn't see these in Phase 4 */
+
+        if (exception_code == 9) { /* Supervisor External Interrupt (from the PLIC) */
+            /*
+             * A device raised its line and the PLIC forwarded it (UART0 input,
+             * for now). plic_dispatch() claims it, routes it to the driver and
+             * completes it.
+             *
+             * Resume the SAME process: no reschedule here. If the driver woke a
+             * blocked reader, it runs at the next timer tick (<= ~10ms), which
+             * keeps every keypress from also being a scheduling point
+             * (predictability over latency).
+             *
+             * Only reachable from U-mode: the kernel never sets sstatus.SIE, so
+             * interrupts cannot nest inside trap handling.
+             */
+            plic_dispatch();
+            return tf;
+        }
+
+        /* Any other interrupt type (e.g. software) is never enabled: fail fast. */
         sbi_puts("\n[FATAL] unexpected Interrupt!\n");
         for (;;) {}
     }
