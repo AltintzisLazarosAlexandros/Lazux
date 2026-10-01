@@ -40,7 +40,7 @@ What exists so far:
 - **ELF64 Executable Loader** (Complete header parsing, `PT_LOAD` segment mapping, permission enforcement, BSS zeroing)
 - **Independent C User-Space Programs** (Freestanding compilation, real C code in user-mode, isolated syscall ABI)
 - **Hardware-enforced Process Isolation** (Per-process Root Page Tables, independent virtual address spaces, strict MMU-mediated privilege)
-- **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_ZOMBIE` states)
+- **Process State Machine** (`PROC_UNUSED`, `PROC_READY`, `PROC_RUNNING`, `PROC_BLOCKED`, `PROC_ZOMBIE` states)
 - **Graceful Process Termination** (`SYS_EXIT` syscall with state cleanup and automatic scheduling)
 - **Working Fork Syscall** (Proper parent/child process creation with correct return values: child PID to parent, 0 to child)
 - **RAMDISK-Backed Program Loading** (Kernel loads ELFs by name from `ramdisk.img` via `_ramdisk_start`)
@@ -55,6 +55,9 @@ What exists so far:
 - **Syscall Pointer Validation** (`vmm_lookup()` + `user_range_ok()`/`user_str_ok()` verify user-supplied pointers are mapped, user-accessible, and correctly permissioned before the kernel dereferences them — a bad pointer now fails the syscall instead of taking down the kernel)
 - **Formalized Syscall Error Codes** (`include/errno.h`: `E_NOENT`, `E_BADF`, `E_FAULT`, `E_NOMEM`, `E_PERM`, `E_AGAIN` — replacing blanket `-1` returns)
 - **W^X Enforcement** (kernel identity map splits `.text` (R+X), `.rodata`/RAMDISK (R-only), and `.data`/`.bss`/free RAM (R+W) instead of one RWX region; user ELF segments can no longer be mapped both writable and executable)
+- **Blocking I/O** (`sleep_on`/`wakeup` wait channels; blocked syscalls re-run on wake; the scheduler idles with `wfi` instead of halting when every process is blocked)
+- **External Interrupts via the PLIC** (UART0 IRQ 10 routed to S-mode; device MMIO identity-mapped R+W in every page table and preserved across fork)
+- **Interactive UART Console** (interrupt-driven NS16550A input driver with a 128-byte RX ring and echo; `read(0, ...)` blocks until input arrives)
 
 ### Current Focus: Phase 6 - Filesystem and I/O Expansion
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
@@ -65,7 +68,8 @@ Phase 6 steps involve:
 - Expanding RAMDISK write policy (currently permanently read-only, returns `E_PERM`).
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
-- Asynchronous I/O exploration (UART input via interrupts for basic interactive shell).
+- ~~Asynchronous I/O exploration~~ Done: interrupt-driven UART input with blocking console `read()`.
+- Console line discipline (backspace editing, line-at-a-time reads), then a minimal interactive shell.
 
 ---
 

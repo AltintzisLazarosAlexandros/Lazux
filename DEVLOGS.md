@@ -597,3 +597,43 @@ Full audit pass over `kernel/` following the SYS_WRITE/SYS_CLOSE milestone. Clos
 ### Notes
 - `map_identity_range()` centralizes the per-region kernel-mapping loop; `vmm_map_kernel()` no longer contains a raw hardcoded `0x80200000`/`0x88000000` pair.
 - The remaining Phase 6 error-handling gap (RAMDISK write policy) is now expressed as `E_PERM` rather than a bare `-1`, but the underlying "read-only RAMDISK" policy itself is unchanged.
+
+---
+
+## 01-10-2026 — Phase 6: Blocking I/O and Interactive UART Console (Stages A + B)
+
+### Summary
+Lazux can now take keyboard input. A user process calls `read(0, ...)`, sleeps while nothing is typed, and is woken by the UART receive interrupt routed through the PLIC. This needed two stages: Stage A added the blocking machinery (wait channels and a scheduler that idles instead of halting); Stage B added device interrupts end to end (MMIO mappings, PLIC driver, UART driver with an RX ring, console `SYS_READ`). Verified with a full QEMU boot plus an interactive input test program.
+
+### Implemented
+
+**Stage A - blocking I/O groundwork (`5fe6a11`):**
+- `sleep_on(chan)` / `wakeup(chan)` wait channels, with a `chan` field in the PCB. `wakeup` wakes every sleeper on the channel.
+- Blocking pattern for syscalls: `sleep_on(chan); tf->sepc -= 4; return schedule(tf);` - the ecall re-runs on wake and re-checks its condition, so spurious wakeups are harmless and there is no lost-wakeup window.
+- Scheduler split into `find_ready` / `any_blocked` / `idle_service`: when every process is blocked, the kernel `wfi`s and dispatches timer/PLIC interrupts by hand instead of halting. `idle_service` never sets `sstatus.SIE` (that would re-enter `trap_entry` on a kernel stack).
+- `SYS_WAIT` / `SYS_EXIT` moved onto channels (the parent's PCB address).
+- Fixes: forked children inherit `heap_break` / `heap_max` (malloc was broken in children); `free_proc` scrubs the whole PCB.
+
+**Stage B - interactive UART console:**
+- `include/platform.h` holds the board memory map. UART0 (`0x10000000`) and PLIC (`0x0C000000`) are identity-mapped R+W (never X/U) in every page table (`9bc5960`).
+- Fork fix: device MMIO sits under the same root entry (VPN[2]=0) as user memory, and `vmm_copy_uvm` overwrote the child's table there, so forked children lost the device mappings. It now merges into the existing tables.
+- `plic.c`: `plic_init` (UART0 priority 1, enable bit 10 for context 1, threshold 0) and `plic_dispatch` (claim, route, complete) (`4577a8e`).
+- `sie.SEIE` set next to `STIE`; `scause` 9 routes to `plic_dispatch()` and returns without rescheduling (`e8c4801`).
+- `uart.c`: `uart_init` (IER receive interrupt), `uart_intr` (drains every waiting byte into a 128-byte RX ring, echoes via `sbi_putchar`, `\r` -> `\n`, full ring drops the byte unechoed, then `wakeup`), `uart_getc` (-1 when empty) (`a3886aa`).
+- Console `SYS_READ` on fd 0 (`b9c6345`): sleeps on `uart_rx_chan()` while the ring is empty, otherwise copies what is available and returns, stopping at `size`, an empty ring, or after `\n`. It never sleeps once a byte has been taken: the re-run ecall would overwrite it, and the byte has already left the ring.
+- `user/readtest.c`: interactive input test (assembles lines in user space; `v` = verbose raw reads, `s` = 4-byte reads, `q` = quit).
+
+### Key Decisions
+- **Echo and output stay in OpenSBI:** console output, including echo, goes through `sbi_putchar` only; the UART driver handles input only. One writer to the device.
+- **No locks in the driver:** the ISR and `uart_getc` both run only in the kernel, which never runs with interrupts enabled, on a single hart - they cannot overlap.
+- **Wait channel exposed through an accessor:** `rx_buf` stays `static`; `trap_handler.c` gets `uart_rx_chan()`, an opaque `void *`. The blocking pattern (`sleep_on`, `sepc` rewind, `schedule`) stays together in the syscall, like `SYS_WAIT`. Rejected: the driver doing the sleeping (it has no trapframe, so the pattern would be split across files) and making the ring non-static.
+- **Raw reads (tty-style):** a read returns as soon as at least one byte is available. Interactively that means one keystroke per read; a paste returns one line per read.
+
+### Verification
+- Clean `make clean && make` with `-Wall -Wextra -Werror`.
+- Normal boot unchanged: fork -> exec `test2.elf` -> RAMDISK read -> `wait()` -> "System Halting".
+- Interactive `readtest`: typed and pasted lines arrive intact and in order, 4-byte reads reassemble long lines with nothing lost, the reader blocks quietly while idle, and `q` exits through `wait()` to a clean halt.
+
+### Known Limitations / Next
+- No line discipline: backspace (`0x7f`) is stored in the ring as a raw byte and the line is not edited. Programs must assemble lines themselves.
+- Next candidate: canonical mode in the driver (backspace editing, line-at-a-time reads, full-ring-without-newline handling), then a minimal user-space shell (read line -> fork + exec -> wait).

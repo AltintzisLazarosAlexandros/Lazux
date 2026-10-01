@@ -34,14 +34,14 @@ make clean
 | `arch/riscv/switch.S` | `switch_to_user`: satp swap, `sfence.vma`, clears SUM/SPP, `sret` |
 | `arch/riscv/sbi.c`, `cpu.c` | OpenSBI ecalls (console, timer, reset), `read_time` |
 | `arch/riscv/plic.c` | PLIC driver: `plic_init` (UART0 priority/enable/threshold for context 1), `plic_dispatch` (claim → route → complete) |
-| `arch/riscv/uart.c` | NS16550A console input: `uart_init` (IER), `uart_intr` (drain → RX ring + echo + `wakeup`), `uart_getc` (-1 if empty) |
+| `arch/riscv/uart.c` | NS16550A console input: `uart_init` (IER), `uart_intr` (drain → RX ring + echo + `wakeup`), `uart_getc` (-1 if empty), `uart_rx_chan` (wait channel) |
 | `arch/riscv/payload.S` | `.incbin ramdisk.img` → `_ramdisk_start/_ramdisk_end` |
 | `mm/pmm.c` | bitmap page allocator, 4KB frames, 128MB tracked |
 | `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
 | `proc/process.c` | process table, `alloc_proc`, `load_elf`, `schedule`, `sleep_on`/`wakeup`, `free_proc` |
 | `main.c` | `kmain`: PMM → VMM/MMU → procs → load `init.elf` from RAMDISK → arm timer → U-mode |
 | `include/` | `proc.h` (PCB, constants), `platform.h` (board memory map: UART0/PLIC base, size, IRQ), `syscall.h`, `errno.h`, `vmm.h`, `mkramdisk.h`, `plic.h`, `uart.h` (UART registers/bits), … |
-| `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers), `lazux.h`, `main.c` (init), `test2.c` |
+| `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers), `lazux.h`, `main.c` (init), `test2.c`, `readtest.c` (console input test) |
 | `../tools/mkramdisk.c` | host tool packing ELFs into `ramdisk.img` |
 
 ## Key invariants — don't break these
@@ -54,7 +54,7 @@ make clean
 - `sstatus.SUM` is set on syscall entry and cleared in `switch_to_user`.
 - **Blocking pattern:** `sleep_on(chan); tf->sepc -= 4; return schedule(tf);` — the ecall re-runs on wake
   and re-checks its condition (spurious wakeups are harmless). `wakeup(chan)` wakes all sleepers.
-  Channels in use: parent's PCB address (`SYS_WAIT`), `&rx_buf` in `uart.c` (UART input; woken by `uart_intr`, slept on by step 5's `SYS_READ`).
+  Channels in use: parent's PCB address (`SYS_WAIT`), `uart_rx_chan()` = `&rx_buf` in `uart.c` (UART input; woken by `uart_intr`, slept on by console `SYS_READ`).
 - Interrupts enabled in `sie`: STIE (bit 5, timer) and SEIE (bit 9, PLIC). They only arrive in U-mode (the kernel never
   sets `sstatus.SIE`), so traps never nest. scause 9 → `plic_dispatch()` → `return tf` (no reschedule).
 - Known weakness: a fault *inside* kernel trap handling makes `trap_entry` crash on `sscratch` (it no longer holds the
@@ -101,7 +101,7 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
   instead of halting while processes are blocked; `SYS_WAIT`/`SYS_EXIT` use channels; forked child
   inherits `heap_break`/`heap_max` (malloc was broken in children); `free_proc` scrubs the whole PCB.
   Boot-tested OK.
-- 🔨 **Stage B — interactive UART console (in progress):**
+- ✅ **Stage B — interactive UART console (complete, DEVLOGS 01-10-2026):**
   1. ✅ `include/platform.h` + UART/PLIC MMIO mapped in `vmm_map_kernel()`; fork fix: `vmm_copy_uvm`
      merges instead of overwriting (children kept losing MMIO). Verified: UART write from kmain and from a forked child.
   2. ✅ (commit `4577a8e`) `plic.c`: `plic_init()` (UART0 priority 1, enable bit 10 for context 1, threshold 0), called in `kmain`
@@ -110,11 +110,19 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
   3. ✅ (commit `e8c4801`) SEIE set next to STIE in `kmain`; UART receive interrupt enabled (IER, `UART0_BASE+1` = 1); `scause` 9 branch in
      `trap_handler()` → `plic_dispatch()` → `return tf`. The UART case drains one byte (8-bit RBR read) and prints
      `[plic] UART interrupt`; the byte is discarded. Verified: one interrupt per received byte, no storm, timer still preempts.
-  4. ✅ UART driver `uart.c`/`uart.h` (user-written, reviewed): `uart_init()` in `kmain`, `plic_dispatch` → `uart_intr()`.
+  4. ✅ (commit `a3886aa`) UART driver `uart.c`/`uart.h` (user-written, reviewed): `uart_init()` in `kmain`, `plic_dispatch` → `uart_intr()`.
      Verified: typed + pasted input echoes, Enter → newline, 200 unread bytes → exactly 128 stored/echoed, normal boot halts.
-  5. **Next:** console `SYS_READ` on fd 0: `uart_getc()`; if -1 → sleep on the ring's channel, `tf->sepc -= 4`, `return schedule(tf)`.
-     Open design point: `rx_buf` is `static` in `uart.c`, so `trap_handler.c` can't name `&rx_buf` - the driver must
-     expose the channel (e.g. a `uart_rx_chan()` accessor) or do the sleeping itself.
+  5. ✅ (commit `b9c6345`) Console `SYS_READ` on fd 0 (user-written, reviewed). Driver exposes the channel via
+     `uart_rx_chan()` (opaque `void *` = `&rx_buf`; chosen over the driver sleeping itself or a non-static ring).
+     Semantics: `size == 0` → 0; ring empty → sleep, `a0` untouched; else copy until `size` / ring empty / after `\n`.
+     Never sleeps once a byte is taken (the re-run would overwrite it). **Raw** reads: interactively one key per read.
+     `user/readtest.elf` (in ramdisk, not run by default): lines assembled in user space; `v` verbose, `s` 4-byte reads, `q` quit.
+     Verified interactively + scripted. Lesson: scripted tests must send keys spaced out, not whole lines in one write,
+     or they hide per-keystroke behaviour.
+- ⏳ **Next — undecided (user still thinking):** console line discipline / canonical mode in the driver: backspace
+  (`0x7f`/`0x08`) edits the pending line + `"\b \b"` on screen (today it's stored raw, seen as extra bytes in line counts),
+  `SYS_READ` waits for a whole line, full ring without `\n` must count as a line (else deadlock). Options: raw only,
+  canonical only, or both with a mode flag. Then a minimal user-space shell (read line → fork + exec → wait).
 - ⏳ Later Phase 6: RAMDISK write policy, basic filesystem API, heap limits/reclaim/guard pages.
 - Minor cleanup: `main.c` still declares `extern process_t process_table[64]` — use `MAX_PROCS`.
 
