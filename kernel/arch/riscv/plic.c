@@ -8,15 +8,15 @@
  * platform.h). Both windows were identity-mapped into every page table by
  * vmm_map_kernel(), so these accesses are safe once the MMU is on.
  *
- * Status (Stage B step 3): live. kmain enables SEIE in sie and the UART's
+ * Status (Stage B step 4): live. kmain enables SEIE in sie and the UART's
  * receive interrupt, so every received byte travels
  *   UART -> PLIC -> sip.SEIP -> trap_handler (scause 9) -> plic_dispatch()
- * The UART route below is still a minimal placeholder; the real driver (RX ring
- * buffer + wakeup of blocked readers) is step 4.
+ *        -> uart_intr() -> RX ring (read later by uart_getc / SYS_READ)
  */
 
 #include "plic.h"
 #include "sbi.h"
+#include "uart.h"
 #include <stdint.h>
 
 /*
@@ -70,23 +70,12 @@ void plic_dispatch(void)
 	switch (irq) {
 	case UART0_IRQ:
 		/*
-		 * Placeholder until the UART driver exists (step 4).
-		 *
-		 * Drain: read the Receive Buffer Register (RBR, offset 0). The UART
-		 * keeps its interrupt line raised while unread data sits in RBR, so
-		 * without this read the complete below would make the PLIC re-fire the
-		 * same interrupt forever. UART registers are 8 bits wide - a byte
-		 * access, unlike the 32-bit PLIC registers.
-		 *
-		 * This takes ONE byte. If several arrived at once (a paste), the line
-		 * stays raised and the PLIC simply delivers again after complete - not
-		 * a storm, just one interrupt per byte. The step-4 driver should loop
-		 * while LSR (offset 5) bit 0 "data ready" is set.
-		 *
-		 * The byte is discarded for now; step 4 stores it in the RX ring.
+		 * The UART driver drains every waiting byte into its RX ring, echoes
+		 * it and wakes blocked readers. Draining is what lowers the UART's
+		 * line, so it must happen BEFORE the complete below - otherwise the
+		 * PLIC would re-deliver the same interrupt forever.
 		 */
-		sbi_puts("[plic] UART interrupt\n");
-		(void)*(volatile uint8_t *)(UART0_BASE + 0);
+		uart_intr();
 		break;
 	default:
 		/* A source we never enabled. Report it; don't halt the kernel. */

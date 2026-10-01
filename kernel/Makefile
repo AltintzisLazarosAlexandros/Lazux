@@ -89,14 +89,21 @@ OBJS = \
     arch/riscv/payload.o \
     arch/riscv/cpu.o \
     arch/riscv/plic.o \
+    arch/riscv/uart.o \
     mm/pmm.o \
     mm/vmm.o \
     proc/process.o \
     lib/string.o \
     main.o
 
+# NOTE: header changes are not tracked as dependencies. After editing anything
+# in include/ (e.g. platform.h, uart.h), run 'make clean && make' so every
+# object that includes it is rebuilt.
+#
 # File Organization:
-#   arch/riscv/      = Architecture-specific code (assembly, CSR access)
+#   arch/riscv/      = Architecture-specific code (assembly, CSR access) and the
+#                      QEMU virt device drivers: plic.o (interrupt controller),
+#                      uart.o (NS16550A console input: RX ring + interrupt handler)
 #   mm/              = Memory management (physical & virtual)
 #   proc/            = Process management
 #   lib/             = General utilities

@@ -10,6 +10,7 @@
  * 5. Timer interrupts - arms preemptive scheduling
  */
 
+#include "uart.h"
 #include "sbi.h"
 #include "trap_header.h"
 #include "pmm.h"
@@ -134,7 +135,7 @@ void kmain(void)
    * 8-bit access - UART registers are one byte wide. Nothing reaches the hart
    * until SEIE is set in sie below.
    */
-  *(volatile uint8_t *)(UART0_BASE + 1) = 1;
+  uart_init();
 
   sbi_puts("Initializing Process Subsystem...\n");
   
