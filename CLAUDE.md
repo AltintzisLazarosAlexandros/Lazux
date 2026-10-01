@@ -21,8 +21,11 @@ make clean
 - Toolchain: `riscv64-unknown-elf-gcc`, `qemu-system-riscv64` (`-machine virt -bios default`, OpenSBI).
 - Flags: `-std=c11 -ffreestanding -Wall -Wextra -Werror -O0 -g3 -mcmodel=medany -march=rv64gc`.
   Warnings are errors — keep builds clean.
-- Verification = a full QEMU boot. Expected: MMU on → init forks → child execs `test2.elf`
-  (reads ELF magic from RAMDISK) → parent `wait()`s → "All processes have finished. System Halting."
+- Verification = a full QEMU boot. Expected: MMU on → init forks → child (pid 2) execs **`readtest.elf`**
+  (user's choice since 2026-10-01, commit `9c75ef6`) → it waits for keyboard lines → `q` + Enter → parent `wait()`s
+  → "All processes have finished. System Halting." The boot **blocks on input**: scripted runs must pipe keystrokes
+  (spaced ~100 ms apart, `\r` for Enter) ending in `q\r`, or QEMU just waits. `test2.elf` (RAMDISK read test) is
+  still in the ramdisk.
 
 ## Layout (`kernel/`)
 
