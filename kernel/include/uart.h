@@ -4,7 +4,9 @@
  * QEMU virt's UART0 is a 16550-compatible serial port - the same one OpenSBI
  * prints through. Lazux uses it for console INPUT: each received byte raises
  * IRQ 10 at the PLIC, plic_dispatch() routes it to uart_intr(), which stores
- * the byte in a receive ring buffer and wakes any process waiting to read.
+ * the byte in a receive ring buffer. Input is line-buffered (canonical mode):
+ * Backspace edits the line being typed, and Enter commits it and wakes any
+ * process waiting to read. Escape sequences and control characters are dropped.
  *
  * Console OUTPUT (including echo of typed characters) still goes through
  * OpenSBI (sbi_putchar), so there is a single writer to the device.
@@ -48,18 +50,21 @@ void uart_init(void);
  * uart_intr() - UART interrupt handler.
  *
  * Called from plic_dispatch() for UART0_IRQ, BEFORE the PLIC complete. Drains
- * every waiting byte (loop while LSR has Data Ready) into the RX ring, echoes
- * it, and wakes processes sleeping on the ring. Draining is what lowers the
- * UART's interrupt line; skip it and the IRQ re-fires forever.
+ * every waiting byte (loop while LSR has Data Ready) and applies the line
+ * discipline: printable bytes are stored and echoed, Backspace erases the last
+ * uncommitted byte, Enter stores '\n', commits the line and wakes processes
+ * sleeping on the ring; escape sequences and other control characters are
+ * dropped. Draining is what lowers the UART's interrupt line; skip it and the
+ * IRQ re-fires forever.
  */
 void uart_intr(void);
 
 /*
- * uart_getc() - Take the next byte from the RX ring.
+ * uart_getc() - Take the next byte of a committed line from the RX ring.
  *
- * Returns the byte (0-255), or -1 if the ring is empty. Never blocks: the
- * caller (SYS_READ on fd 0, step 5) decides whether to sleep_on() the ring
- * and retry.
+ * Returns the byte (0-255), or -1 if no committed bytes are waiting (a line
+ * still being typed doesn't count). Never blocks: the caller (console SYS_READ)
+ * decides whether to sleep_on() the ring and retry.
  */
 int uart_getc(void);
 
@@ -67,7 +72,7 @@ int uart_getc(void);
  * uart_rx_chan() - Wait channel for RX ring input.
  *
  * SYS_READ on a console fd sleeps on this when uart_getc() returns -1;
- * uart_intr() wakes it after storing new bytes. The pointer is only a name to
+ * uart_intr() wakes it when Enter commits a line. The pointer is only a name to
  * sleep on - never read or write through it.
  */
 void *uart_rx_chan(void);

@@ -57,7 +57,7 @@ What exists so far:
 - **W^X Enforcement** (kernel identity map splits `.text` (R+X), `.rodata`/RAMDISK (R-only), and `.data`/`.bss`/free RAM (R+W) instead of one RWX region; user ELF segments can no longer be mapped both writable and executable)
 - **Blocking I/O** (`sleep_on`/`wakeup` wait channels; blocked syscalls re-run on wake; the scheduler idles with `wfi` instead of halting when every process is blocked)
 - **External Interrupts via the PLIC** (UART0 IRQ 10 routed to S-mode; device MMIO identity-mapped R+W in every page table and preserved across fork)
-- **Interactive UART Console** (interrupt-driven NS16550A input driver with a 128-byte RX ring and echo; `read(0, ...)` blocks until input arrives)
+- **Interactive UART Console** (interrupt-driven NS16550A input driver with a 128-byte RX ring and echo; canonical line discipline with Backspace editing; `read(0, ...)` blocks until a line is entered)
 
 ### Current Focus: Phase 6 - Filesystem and I/O Expansion
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
@@ -69,7 +69,8 @@ Phase 6 steps involve:
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
 - ~~Asynchronous I/O exploration~~ Done: interrupt-driven UART input with blocking console `read()`.
-- Console line discipline (backspace editing, line-at-a-time reads), then a minimal interactive shell.
+- ~~Console line discipline~~ Done: canonical mode (Backspace, line-at-a-time reads, escape sequences swallowed).
+- Minimal interactive shell; later a raw-mode switch for a user-space line editor.
 
 ---
 

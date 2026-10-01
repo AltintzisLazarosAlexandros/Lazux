@@ -34,7 +34,7 @@ make clean
 | `arch/riscv/switch.S` | `switch_to_user`: satp swap, `sfence.vma`, clears SUM/SPP, `sret` |
 | `arch/riscv/sbi.c`, `cpu.c` | OpenSBI ecalls (console, timer, reset), `read_time` |
 | `arch/riscv/plic.c` | PLIC driver: `plic_init` (UART0 priority/enable/threshold for context 1), `plic_dispatch` (claim → route → complete) |
-| `arch/riscv/uart.c` | NS16550A console input: `uart_init` (IER), `uart_intr` (drain → RX ring + echo + `wakeup`), `uart_getc` (-1 if empty), `uart_rx_chan` (wait channel) |
+| `arch/riscv/uart.c` | NS16550A console input + canonical line discipline: `uart_init` (IER), `uart_intr` (drain → escape/backspace/Enter handling → RX ring + echo; `wakeup` on commit), `uart_getc` (-1 if no committed byte), `uart_rx_chan` (wait channel) |
 | `arch/riscv/payload.S` | `.incbin ramdisk.img` → `_ramdisk_start/_ramdisk_end` |
 | `mm/pmm.c` | bitmap page allocator, 4KB frames, 128MB tracked |
 | `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
@@ -66,8 +66,15 @@ make clean
 - Process states: `UNUSED → READY ⇄ RUNNING → BLOCKED → READY`; `RUNNING → ZOMBIE` on exit, reaped by parent's `SYS_WAIT`.
 - RAMDISK is read-only (writes return `E_PERM`).
 - UART registers are 8-bit (`volatile uint8_t *`), PLIC registers 32-bit. Console output (incl. echo) goes through
-  OpenSBI `sbi_putchar` only; the UART driver handles input. RX ring: 128 bytes, free-running `rx_head`/`rx_tail`,
-  full → new byte dropped and not echoed; `\r` → `\n`. No locks: ISR and `uart_getc` both run in the kernel only.
+  OpenSBI `sbi_putchar` only; the UART driver handles input. No locks: ISR and `uart_getc` both run in the kernel only.
+- **Console is canonical (line-buffered)**, in `uart.c`. RX ring: 128 bytes, three free-running counters
+  `rx_tail ≤ rx_commit ≤ rx_head` (readable = tail..commit, line being typed = commit..head). `uart_getc` only sees
+  committed bytes. Enter stores `\n`, *then* `rx_commit = rx_head`, then `wakeup` (the only wakeup). Normal bytes may
+  use at most `SIZE - 1` slots, so `\n` always fits (no full-ring deadlock); beyond that, dropped and not echoed.
+  Backspace (`0x7f`/`0x08`) erases only above `rx_commit`, echo `"\b \b"`. Escape sequences swallowed by a `static`
+  `esc_state` machine (ESC → `[` → final byte `0x40`–`0x7e`); other bytes `< 0x20` dropped. `c` is `unsigned char`
+  (UTF-8 kept). `\r` → `\n`. Cursor movement/history are deliberately **not** kernel work (user-space line editor + a
+  future raw mode, as Linux readline does).
 - Device MMIO (UART `0x10000000`, PLIC `0x0C000000`, see `platform.h`) is identity-mapped R+W, never X/U, in every
   page table. It sits under the same root entry (VPN[2]=0) as user memory, so `vmm_copy_uvm` must **merge** into
   the child's existing tables, never overwrite them, or forked children lose the device mappings.
@@ -119,10 +126,17 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
      `user/readtest.elf` (in ramdisk, not run by default): lines assembled in user space; `v` verbose, `s` 4-byte reads, `q` quit.
      Verified interactively + scripted. Lesson: scripted tests must send keys spaced out, not whole lines in one write,
      or they hide per-keystroke behaviour.
-- ⏳ **Next — undecided (user still thinking):** console line discipline / canonical mode in the driver: backspace
-  (`0x7f`/`0x08`) edits the pending line + `"\b \b"` on screen (today it's stored raw, seen as extra bytes in line counts),
-  `SYS_READ` waits for a whole line, full ring without `\n` must count as a line (else deadlock). Options: raw only,
-  canonical only, or both with a mode flag. Then a minimal user-space shell (read line → fork + exec → wait).
+- ✅ **Stage C — console line discipline (canonical mode):** decided 2026-10-01 (user: "full editing of a line").
+  1. ✅ `rx_commit` counter: readers see only finished lines; wakeup only on Enter (user-written).
+  2. ✅ Reserved slot for `\n` (normal bytes ≤ `SIZE - 1`) — no full-ring deadlock (user-written).
+  3. ✅ Backspace, stops at `rx_commit` (user-written).
+  4. ✅ Escape-sequence state machine + drop other control chars, `unsigned char c` (Claude-written on request).
+  5. ✅ Cleanup + docs. `SYS_READ` needed **no change** (option A's layering paid off). Verified scripted (arrows,
+     ESC split across interrupts, Delete `ESC[3~`, Alt+x, Tab/Ctrl-C, backspace, UTF-8, 4-byte reads, 140-char overflow)
+     + user's interactive runs. `readtest` prints non-printables as `\xNN` (found `ESC[A` from Up-arrow habit).
+  Not done (optional): Ctrl-U kill line.
+- ⏳ **Next:** minimal user-space shell (read line → fork + exec → wait). Later: kernel raw-mode switch (no buffering/echo)
+  so the shell can do its own line editor (cursor, history), as bash/readline do on Linux.
 - ⏳ Later Phase 6: RAMDISK write policy, basic filesystem API, heap limits/reclaim/guard pages.
 - Minor cleanup: `main.c` still declares `extern process_t process_table[64]` — use `MAX_PROCS`.
 

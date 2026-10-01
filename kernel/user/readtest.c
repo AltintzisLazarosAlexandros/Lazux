@@ -1,16 +1,16 @@
 /*
  * user/readtest.c - Console input test (Stage B step 5)
  *
- * Console SYS_READ is "raw": it returns as soon as at least one byte is in the
- * RX ring, and stops after a '\n'. A human types far slower than the CPU, so
- * interactively almost every read() returns a single keystroke; only input that
- * is already queued (a paste) comes back in bigger pieces. Lines are therefore
- * assembled HERE, in user space, from however many reads it takes.
+ * The console is line-buffered (canonical mode, uart.c): read() blocks until
+ * Enter commits a line, then returns at most that one line. With a small read
+ * size a line comes back in pieces, so lines are still assembled HERE, in user
+ * space, from however many reads it takes.
  *
  * Checks by hand:
- *   - blocks quietly while nothing is typed (no busy loop)
- *   - every typed byte arrives exactly once, in order, nothing lost
- *   - a paste of several lines comes back one line per read() (see 'v')
+ *   - blocks quietly while a line is being typed (no busy loop)
+ *   - Backspace edits the line before Enter; it can't erase past the line start
+ *   - arrow keys / control characters don't end up in the line
+ *   - 4-byte reads split a line, nothing lost, '\n' only in the last piece
  *
  * Commands (typed as a whole line, then Enter):
  *   v  - toggle verbose: also report every raw read() result
@@ -26,12 +26,19 @@
 #define SMALL_SIZE 4
 #define LINE_MAX 128
 
-/* Print n bytes between brackets, with '\n' made visible. */
+/*
+ * Print n bytes between brackets with every non-printable byte made visible:
+ * '\n' as "\n", anything else outside 0x20..0x7e as "\xNN". Printing them raw
+ * would let the terminal act on them (ESC sequences move the cursor, DEL/BS
+ * erase), hiding exactly the bytes this test exists to catch.
+ */
 static void show(const char *p, int n) {
     putchar('[');
     for (int i = 0; i < n; i++) {
-        if (p[i] == '\n') printf("\\n");
-        else putchar(p[i]);
+        unsigned char b = (unsigned char)p[i];
+        if (b == '\n') printf("\\n");
+        else if (b < 0x20 || b > 0x7e) printf("\\x%x", b);
+        else putchar(b);
     }
     putchar(']');
 }

@@ -637,3 +637,27 @@ Lazux can now take keyboard input. A user process calls `read(0, ...)`, sleeps w
 ### Known Limitations / Next
 - No line discipline: backspace (`0x7f`) is stored in the ring as a raw byte and the line is not edited. Programs must assemble lines themselves.
 - Next candidate: canonical mode in the driver (backspace editing, line-at-a-time reads, full-ring-without-newline handling), then a minimal user-space shell (read line -> fork + exec -> wait).
+
+---
+
+## 01-10-2026 — Phase 6: Console Line Discipline (Canonical Mode)
+
+### Summary
+The console now hands programs finished, edited lines. Backspace edits the line being typed, Enter commits it, and arrow keys and other control input no longer leak into lines. All of it lives in the UART driver; console `SYS_READ` needed no change.
+
+### Implemented
+- **Commit counter:** the RX ring has three free-running counters, `rx_tail <= rx_commit <= rx_head`. Readers (`uart_getc`) only see committed bytes; the line being typed sits between `rx_commit` and `rx_head`. Enter stores `\n`, then commits, then wakes readers - the only wakeup.
+- **No full-ring deadlock:** normal bytes may use at most `UART_RX_SIZE - 1` slots, so the `\n` that ends a line always fits. Without the reserve, a ring filled by an unfinished line would leave the reader asleep with no room for Enter.
+- **Backspace** (`0x7f` / `0x08`): erases the last uncommitted byte and echoes `"\b \b"`. It never erases past `rx_commit`, because a committed line may already be in a reader's buffer.
+- **Escape sequences swallowed:** a `static` state machine (ESC -> `[` -> final byte `0x40`-`0x7e`) drops arrow keys, Home/End, Delete (`ESC [ 3 ~`) and Alt+key. It survives a sequence split across two interrupts. Other control bytes (`< 0x20`) are dropped. The received byte is `unsigned char`, so UTF-8 input is kept.
+- `user/readtest.c` prints non-printable bytes as `\xNN`, which exposed `ESC [ A` bytes hidden in lines before this change.
+
+### Key Decisions
+- **Canonical mode in the kernel, rich editing in user space.** Like Linux's tty, the kernel only does end-of-line editing. Cursor movement, history and completion belong to a future shell line editor (as bash/readline does), which will need a kernel raw-mode switch. Escape sequences are swallowed rather than stored (Linux stores and echoes them as `^[[A`).
+
+### Verification
+- Clean `-Werror` build. The normal boot still halts.
+- Scripted keystroke tests: arrows, an ESC split across interrupts, Delete, Alt+x, Tab/Ctrl-C, Backspace (including on an empty line), UTF-8, 4-byte reads, and 140-character overflow (127 + `\n` on the first Enter). Also interactive runs.
+
+### Next
+- Minimal user-space shell (read line -> fork + exec -> wait). Later, a raw-mode switch plus a user-space line editor.
