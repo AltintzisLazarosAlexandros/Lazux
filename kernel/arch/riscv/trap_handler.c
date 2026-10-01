@@ -25,6 +25,7 @@
 #include "mkramdisk.h"
 #include "syscall.h"
 #include "errno.h"
+#include "uart.h"
 #include <string.h>
 
 /* Assembly context switch function: swaps virtual address spaces and registers */
@@ -642,7 +643,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             tf->a0 = fd;
             return tf;
         }
-        case SYS_READ: /* SYS_READ: read bytes from RAMDISK file */
+        case SYS_READ: /* SYS_READ: read bytes from the console (fd 0) or a RAMDISK file */
         {
             int fd = (int)tf->a0;
             char* buffer = (char*)tf->a1;
@@ -661,8 +662,50 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 return tf;
             }
 
+            /*
+             * Console read: take bytes from the UART RX ring (uart.c).
+             *
+             * Blocking rule: sleep ONLY while zero bytes have been taken.
+             * Sleeping works by re-running the whole ecall on wake (sepc -= 4),
+             * so any byte already pulled from the ring and copied to 'buffer'
+             * before sleeping would be overwritten by the re-run - and it has
+             * already left the ring, so it would be lost for good. Once the
+             * first byte is in hand we are committed to returning.
+             *
+             * tf->a0 must stay untouched on the sleep path: it still holds fd,
+             * which the re-run ecall reads again.
+             *
+             * Returns as soon as at least one byte is available (tty-style), and
+             * stops after a '\n' so one read() delivers at most one line. Bytes
+             * that don't fit in 'size' stay in the ring for the next read().
+             */
             if (file->type == FILE_TYPE_CONSOLE) {
-                tf->a0 = E_PERM;
+                /* Nothing requested: return now, never block for it. */
+                if (size == 0) { tf->a0 = 0; return tf; }
+
+                /* int, not char: -1 ("empty") must stay distinct from byte 0xFF. */
+                int c = uart_getc();
+                if (c == -1) {
+                    /* Ring empty: block until uart_intr() wakes the channel. */
+                    sleep_on(uart_rx_chan());
+                    tf->sepc -= 4;
+                    return schedule(tf);
+                }
+
+                /*
+                 * Committed: copy what is available, never sleep from here on.
+                 * Writing 'buffer' directly is safe - user_range_ok() checked
+                 * [buffer, buffer+size) above, SUM is set, and n < size.
+                 */
+                buffer[0] = (char)c;
+                uint32_t n = 1;
+                while (n < size) {
+                    if (buffer[n - 1] == '\n') break;   /* one line per read() */
+                    c = uart_getc();
+                    if (c == -1) break;                 /* nothing more typed yet */
+                    buffer[n++] = (char)c;
+                }
+                tf->a0 = n;
                 return tf;
             }
             

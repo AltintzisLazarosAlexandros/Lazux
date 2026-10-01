@@ -62,3 +62,12 @@ void uart_intr(void);
  * and retry.
  */
 int uart_getc(void);
+
+/*
+ * uart_rx_chan() - Wait channel for RX ring input.
+ *
+ * SYS_READ on a console fd sleeps on this when uart_getc() returns -1;
+ * uart_intr() wakes it after storing new bytes. The pointer is only a name to
+ * sleep on - never read or write through it.
+ */
+void *uart_rx_chan(void);

@@ -97,7 +97,7 @@ void free(void* ptr);
 
 int open(const char *filename); /* Open a RAMDISK file by name */
 
-int read(int fd, void *buffer, int size); /* Read from a RAMDISK file descriptor */
+int read(int fd, void *buffer, int size); /* Read from the console (fd 0, blocks) or a RAMDISK fd */
 
 int write(int fd, const void* buffer, int size); /* Write to a console fd (RAMDISK write unsupported) */
 

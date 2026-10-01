@@ -38,8 +38,8 @@
  * when the uint32_t counters eventually wrap around. All three variables live
  * in .bss, which entry.S zeroes, so the ring starts empty with no setup.
  *
- * &rx_buf doubles as the wait channel: readers sleep_on(&rx_buf), and
- * uart_intr() calls wakeup(&rx_buf).
+ * &rx_buf doubles as the wait channel: readers sleep_on(uart_rx_chan()),
+ * which is &rx_buf, and uart_intr() calls wakeup(&rx_buf).
  */
 #define UART_RX_SIZE 128
 
@@ -108,4 +108,16 @@ int uart_getc(void)
 	unsigned char c = rx_buf[rx_tail % UART_RX_SIZE];
 	rx_tail++;
 	return c;
+}
+
+/*
+ * uart_rx_chan() - The wait channel for "data arrived in the RX ring".
+ *
+ * rx_buf stays static; callers outside the driver get only its address, as an
+ * opaque void * to pass to sleep_on(). It must be the same pointer uart_intr()
+ * hands to wakeup(), which is why the driver - not the caller - names it.
+ */
+void *uart_rx_chan(void)
+{
+	return &rx_buf;
 }

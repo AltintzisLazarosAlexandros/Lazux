@@ -378,7 +378,7 @@ int open(const char *filename) {
     return ret;
 }
 
-/* read() - Read bytes from a RAMDISK file descriptor (SYS_READ = 8). */
+/* read() - Read from the console (fd 0, blocks until input, at most one line) or a RAMDISK fd (SYS_READ = 8). */
 int read(int fd, void *buffer, int size) {
     int ret;
     __asm__ volatile (
