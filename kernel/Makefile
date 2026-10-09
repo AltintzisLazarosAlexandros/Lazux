@@ -128,6 +128,10 @@ user/test2.elf: user/start.S user/syscalls.c user/test2.c user/lazux.h
 # Console input test: loops on read(0, ...) and reports each result
 user/readtest.elf: user/start.S user/syscalls.c user/readtest.c user/lazux.h
 	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/readtest.elf user/start.S user/syscalls.c user/readtest.c
+
+# Lazux shell: prompt, read a line, run built-ins or fork + exec a program
+user/sh.elf: user/start.S user/syscalls.c user/sh.c user/lazux.h
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/sh.elf user/start.S user/syscalls.c user/sh.c
 # Flag Meanings:
 #   -Wl,-Ttext=0x400000 = Link user program's text section at VA 0x400000
 #                        (user address space, kernel won't map here initially)
@@ -138,8 +142,8 @@ user/readtest.elf: user/start.S user/syscalls.c user/readtest.c user/lazux.h
 #   4. Later, payload.S uses '.incbin' to embed this binary into kernel
 
 
-ramdisk.img: $(MKRAMDISK) user/init.elf user/test2.elf user/readtest.elf
-	$(MKRAMDISK) ramdisk.img user/init.elf user/test2.elf user/readtest.elf
+ramdisk.img: $(MKRAMDISK) user/init.elf user/test2.elf user/readtest.elf user/sh.elf
+	$(MKRAMDISK) ramdisk.img user/init.elf user/test2.elf user/readtest.elf user/sh.elf
 
 $(MKRAMDISK): ../tools/mkramdisk.c
 	gcc ../tools/mkramdisk.c -o $(MKRAMDISK)
@@ -186,7 +190,7 @@ kernel.elf: $(OBJS)
 #
 # Build Dependency Chain:
 #   payload.o → payload.S + ramdisk.img
-#   ramdisk.img → mkramdisk + user/init.elf + user/test2.elf + user/readtest.elf
+#   ramdisk.img → mkramdisk + user/init.elf + user/test2.elf + user/readtest.elf + user/sh.elf
 
 arch/riscv/payload.o: arch/riscv/payload.S ramdisk.img
 	$(CC) $(ASMFLAGS) -c arch/riscv/payload.S -o arch/riscv/payload.o
@@ -201,7 +205,7 @@ arch/riscv/payload.o: arch/riscv/payload.S ramdisk.img
 # ============================================================================
 
 clean:
-	rm -f $(OBJS) kernel.elf kernel.disasm user/init.elf user/test2.elf user/readtest.elf ramdisk.img $(MKRAMDISK)
+	rm -f $(OBJS) kernel.elf kernel.disasm user/init.elf user/test2.elf user/readtest.elf user/sh.elf ramdisk.img $(MKRAMDISK)
 
 # What gets deleted:
 #   $(OBJS)       = all .o compilation artifacts (including payload.o)
@@ -210,6 +214,7 @@ clean:
 #   user/init.elf = primary user program binary
 #   user/test2.elf = alternative user program binary (for SYS_EXEC testing)
 #   user/readtest.elf = console input test (blocking SYS_READ on fd 0)
+#   user/sh.elf = the Lazux shell
 #   ramdisk.img = embedded ramdisk image
 #   $(MKRAMDISK) = mkramdisk tool
 

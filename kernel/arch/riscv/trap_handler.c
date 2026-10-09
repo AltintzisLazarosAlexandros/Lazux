@@ -286,9 +286,11 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             break;
             
         case SYS_EXIT: /* SYS_EXIT: terminate current process */
+	    #if DEBUG_SYSCALLS
             sbi_puts("\n[kernel] Process ");
             puthex(current_proc->pid); 
             sbi_puts(" became a ZOMBIE.\n");
+	    #endif
             
             current_proc->state = PROC_ZOMBIE;
 
@@ -376,16 +378,20 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              * - vmm_copy_uvm does recursive walk of parent page table, allocating new pages
              * - Child inherits parent's code but with fresh page allocations (no shared memory)
              */
+	    #if DEBUG_SYSCALLS
             sbi_puts("[trap_handler] SYS_FORK called by pid=");
             puthex(current_proc->pid);
             sbi_puts("\n");
+	    #endif
             
             current_proc->trap_frame = *tf;
 
             process_t *child = alloc_proc();
 
             if (child == 0) {
+		#if DEBUG_SYSCALLS
                 sbi_puts("[trap_handler] FORK FAILED: no proc slot\n");
+		#endif
                 tf->a0 = E_AGAIN;
                 /* sepc already advanced by the +4 before the switch; don't add again */
                 return tf;
@@ -413,20 +419,25 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             /* Parent gets child PID; child gets 0 (already sepc-advanced above) */
             tf->a0 = child->pid;
             child->trap_frame.a0 = 0;
-
+	    #if DEBUG_SYSCALLS
             sbi_puts("[trap_handler] Fork: parent a0=");
             puthex(tf->a0);
             sbi_puts(" (child pid), child a0=0, calling vmm_copy_uvm...\n");
-            
+	    #endif
+	    
             vmm_copy_uvm(current_proc->page_table, child->page_table, 2);
             
+	    #if DEBUG_SYSCALLS
             sbi_puts("[trap_handler] vmm_copy_uvm done, marking child READY\n");
+	    #endif
 
             child->state = PROC_READY; /* Make child schedulable */
             
+            #if DEBUG_SYSCALLS
             sbi_puts("[trap_handler] Returning from FORK, parent will resume\n");
-
-            return tf;
+	    #endif
+            
+	    return tf;
         }
         case SYS_EXEC: /* SYS_EXEC: Load and execute alternative user program */
         {
@@ -494,15 +505,19 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
              * User cannot load arbitrary code (requires future filesystem trust model).
              * All programs validated during kernel linking.
              */
-            sbi_puts("[trap_handler] SYS_EXEC called\n");
+            #if DEBUG_SYSCALLS
+	    sbi_puts("[trap_handler] SYS_EXEC called\n");
+	    #endif
 
             const char *filename = (const char *)tf->a0;
             if (!user_str_ok(filename, 256)) { tf->a0 = E_FAULT; return tf; }
             const ramdisk_entry_t *entry = ramdisk_get_entry(filename);
 
             if (!entry) {
+		#if DEBUG_SYSCALLS
                 sbi_puts("[trap_handler] EXEC FAILED: File not found!\n");
-                tf->a0 = E_NOENT;
+		#endif
+		tf->a0 = E_NOENT;
                 return tf;
             }
 
@@ -761,7 +776,9 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 		}
 		if (file->type == FILE_TYPE_RAMDISK) {
 
+			#if DEBUG_SYSCALLS
 			sbi_puts(" Not possible yet");
+			#endif
 
 			tf->a0 = E_PERM;
                 	return tf;

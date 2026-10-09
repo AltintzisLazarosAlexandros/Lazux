@@ -37,6 +37,16 @@ extern void switch_to_user(trap_frame_t* tf, uint64_t satp_val);
  */
 #define DEBUG_SCHED 0
 
+/*
+ * Set to 1 to restore the per-syscall trace in trap_handler.c: fork/exec
+ * progress, "process became a ZOMBIE" on exit, and syscall failures that are
+ * already returned to the program as an error code (no proc slot, exec of a
+ * missing file, write to the RAMDISK).
+ * Off by default: a shell would print it around every command. Messages for
+ * real kernel trouble (FATAL, PANIC) or for killing a program stay visible.
+ */
+#define DEBUG_SYSCALLS 0
+
 #define FD_MAX 16
 
 #define FILE_TYPE_NONE    0
