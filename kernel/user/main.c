@@ -27,7 +27,7 @@ int main() {
     int pid = fork();
     
     if (pid == 0) {
-        exec("readtest.elf");
+        exec("sh.elf");
     } else {
         int dead_child = wait();
         
