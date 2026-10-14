@@ -29,12 +29,12 @@ Goal: finish the interactive shell, fix stale docs, and **close Phase 6 by expli
 not by building everything on the old punch list.
 
 ### 1.1 Shell step 2: fork + exec + wait
-- [ ] Parse the line: trim it and take the first word as the program name. An empty line just shows the prompt again.
+- [x] Parse the line: trim it and take the first word as the program name. An empty line just shows the prompt again. (2026-10-14, 9fdf77e)
 - [ ] Built-in `exit` runs in the shell itself, before any fork.
 - [ ] External command: `fork()` → child `exec(name)` → parent `wait()`.
 - [ ] **Child exits if `exec` fails** (prints an error and calls `exit(1)`). Without this, the failed child becomes
       a second shell competing for fd 0.
-- [ ] `read_line()` guard: never index `buffer[len - 1]` when `len == 0` (a 0-byte read must not loop or underflow).
+- [x] `read_line()` guard: never index `buffer[len - 1]` when `len == 0` (a 0-byte read must not loop or underflow). (2026-10-14, 2699144)
 - [ ] Program names get `.elf` handling decided (type `test2` or `test2.elf`; pick one and document it).
 - [ ] **Acceptance:** boot → `lazux>` prompt → `test2.elf` runs and returns to the prompt → an unknown
       name prints an error and returns to the prompt with only one shell alive → `exit` → system halts cleanly.
@@ -45,7 +45,7 @@ not by building everything on the old punch list.
 - [ ] `CLAUDE.md` current status: the shell is in progress, not "Next".
 - [ ] README Phase 6 list: mark error codes + pointer validation as done.
 - [ ] `main.c`: replace `process_table[64]` with `MAX_PROCS`.
-- [ ] Add a pointer to this file in `CLAUDE.md` ("Working plan: see `ROADMAP.md`").
+- [x] Add a pointer to this file in `CLAUDE.md` ("Working plan: see `ROADMAP.md`"). (2026-10-14, 9fdf77e)
 
 ### 1.3 Optional, only if cheap
 - [ ] Heap guard page between `heap_max` and the user stack (unmapped page, so overflow faults instead of corrupting).
