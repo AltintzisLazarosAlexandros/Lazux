@@ -20,6 +20,7 @@ int read_line(char *buffer, int max) {
         int ret = read(0, buffer + len, max - 1 - len);
         if (ret < 0) return ret;          // kernel error (any negative number)
         len += ret;                       // we now have 'ret' more bytes
+        if(ret == 0) break;
         if (buffer[len - 1] == '\n')      // got the end of the line? done
             break;
     }
@@ -53,6 +54,10 @@ int main() {
         printf("lazux> ");
         int n = read_line(line, sizeof(line));
         if (n < 0) return -1;
+        if (n == 0) {
+            printf("\n");
+            return 0;
+        }
         if (n > 0 && line[n - 1] == '\n')
             line[n - 1] = '\0';           // drop the newline
         int argc = parseline(line, args, 16);
