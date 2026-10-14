@@ -5,6 +5,8 @@ Solo, learning-driven but serious. Values: simplicity, explicit decisions, predi
 over throughput, clear privilege boundaries, small inspectable kernel. Long-term direction:
 capability-based authority, single-user local-first workstation.
 
+Working plan: see `ROADMAP.md` (read it after this file at the start of every session; the first unchecked box is the current step).
+
 Authoritative history lives in `DEVLOGS.md` (dated `DD-MM-YYYY` entries) and `README.md`.
 Narrative notes (decisions, board, architecture) also live in the Obsidian vault at
 `C:\Users\altal\Documents\Obsidian Vault\Claude\Lazux\`.

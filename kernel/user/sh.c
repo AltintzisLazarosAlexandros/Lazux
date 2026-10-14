@@ -28,15 +28,42 @@ int read_line(char *buffer, int max) {
     return len;                           // how many bytes we stored
 }
 
+int parseline(char *line, char **args, int max_args){
+    int argc = 0, i = 0;
+    while(line[i] != '\0' && max_args > argc){
+        while(line[i] == ' ') i++;
+        if (line[i] == '\0') break;
+        args[argc++] = &line[i];
+        while(line[i] != ' ' && line[i] != '\0'){
+            i++;
+        }
+        if (line[i] == ' ') {
+                line[i] = '\0';   // end this word here
+                i++;              // continue after it
+        }
+    }
+    args[argc] = 0;
+    return argc;
+}
+
 int main() {
     char line[MAX];
+    char *args[17];
     while (1) {
         printf("lazux> ");
         int n = read_line(line, sizeof(line));
         if (n < 0) return -1;
         if (n > 0 && line[n - 1] == '\n')
             line[n - 1] = '\0';           // drop the newline
-        printf("you typed: [%s]\n", line);
+        int argc = parseline(line, args, 16);
+        if(argc == 0){
+            continue;
+        }
+        else {
+            for(int i = 0; i < argc; i++){
+                printf("arg[%d] = [%s]\n", i, args[i]);
+            }
+        }
     }
     return 0;
 }

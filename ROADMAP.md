@@ -1,0 +1,114 @@
+# Lazux Roadmap: Phase 6 close-out → Phase 7 (capabilities)
+
+This file is the **working plan**. `CLAUDE.md` holds invariants and context, `DEVLOGS.md` holds history,
+and this file holds what is being done now and what comes next.
+
+## How Claude should use this file
+
+- **Read this file at the start of every session**, after `CLAUDE.md`. Tell Alex which step is current
+  (the first unchecked box) before doing anything else.
+- **Alex writes the code; Claude reviews.** Don't write full implementations unless Alex explicitly asks.
+  Point out problems, edge cases and invariant violations, and suggest the *shape* of a fix.
+- **Only tick a box after verification.** For kernel/user code that means a clean `-Werror` build **and** a QEMU
+  boot showing the step's acceptance criterion. Ask Alex before ticking. Don't tick on "it compiles".
+- **When a step is ticked:** add the date and commit hash after it, like `(2026-10-20, abc1234)`.
+- **If work drifts outside the current step**, say so. If Alex wants the detour anyway, add it to the
+  "Detours" log at the bottom with a one-line reason, instead of silently expanding scope.
+- **Guardrail for Phase 7:** the target is *ambient authority* (see §3), not "anything that looks like Unix".
+  Don't propose rewriting the scheduler, wait channels, paging, the trap path, the UART/PLIC drivers,
+  `malloc`/`printf`, or the console line discipline as part of the capability work. Challenge any step
+  that turns into a rewrite.
+- **At a milestone** (end of a section below): a DEVLOGS entry, README status update, and update the
+  "Current status" section in `CLAUDE.md`.
+
+---
+
+## 1. Phase 6 close-out
+
+Goal: finish the interactive shell, fix stale docs, and **close Phase 6 by explicit deferral**,
+not by building everything on the old punch list.
+
+### 1.1 Shell step 2: fork + exec + wait
+- [ ] Parse the line: trim it and take the first word as the program name. An empty line just shows the prompt again.
+- [ ] Built-in `exit` runs in the shell itself, before any fork.
+- [ ] External command: `fork()` → child `exec(name)` → parent `wait()`.
+- [ ] **Child exits if `exec` fails** (prints an error and calls `exit(1)`). Without this, the failed child becomes
+      a second shell competing for fd 0.
+- [ ] `read_line()` guard: never index `buffer[len - 1]` when `len == 0` (a 0-byte read must not loop or underflow).
+- [ ] Program names get `.elf` handling decided (type `test2` or `test2.elf`; pick one and document it).
+- [ ] **Acceptance:** boot → `lazux>` prompt → `test2.elf` runs and returns to the prompt → an unknown
+      name prints an error and returns to the prompt with only one shell alive → `exit` → system halts cleanly.
+- Out of scope for now: argv, pipes, redirection, job control, line editing (raw mode). See §4.
+
+### 1.2 Docs catch up with the code
+- [ ] `CLAUDE.md` boot expectation: init execs **`sh.elf`** (not `readtest.elf`). Update the scripted-run notes.
+- [ ] `CLAUDE.md` current status: the shell is in progress, not "Next".
+- [ ] README Phase 6 list: mark error codes + pointer validation as done.
+- [ ] `main.c`: replace `process_table[64]` with `MAX_PROCS`.
+- [ ] Add a pointer to this file in `CLAUDE.md` ("Working plan: see `ROADMAP.md`").
+
+### 1.3 Optional, only if cheap
+- [ ] Heap guard page between `heap_max` and the user stack (unmapped page, so overflow faults instead of corrupting).
+      Skip if it takes more than a short session; record it as deferred instead.
+
+### 1.4 Close Phase 6
+- [ ] DEVLOGS entry "Phase 6 complete", stating what Phase 6 delivered **and the explicit deferrals**:
+  - RAMDISK write support → deferred to a real block device (the RAMDISK is read-only by design under W^X).
+  - Filesystem API → deferred until the capability model exists, so it isn't designed around global names.
+  - Heap reclaim (shrinking `sbrk`) → deferred, no current pressure.
+- [ ] README: Phase 6 complete, Phase 7 (capabilities) started.
+
+---
+
+## 2. Phase 7a: capability model design (no code)
+
+Goal: a short design doc, `docs/capabilities.md`, that answers the questions below **before** any kernel change.
+Claude's job here is to argue: poke holes, compare against seL4/Fuchsia/KeyKOS-style approaches where
+useful, and keep the model small.
+
+- [ ] **What is a capability in Lazux?** Recommended starting point: an index into a per-process kernel table,
+      the way an fd is today. Decide what an entry holds (object type, object pointer, rights bits).
+- [ ] **Object types for v1.** Likely: console, RAMDISK file, RAMDISK directory (the "namespace"), program image.
+      Keep the list short.
+- [ ] **Rights.** Which bits exist (read / write / exec / grant?) and whether a holder can derive a reduced copy.
+- [ ] **Bootstrap.** What capabilities `init` starts with, and who grants them (the kernel at boot).
+- [ ] **Passing.** How a child gets capabilities: explicitly listed at creation, nothing inherited implicitly.
+- [ ] **Revocation.** v1 = coarse "kill the domain" (as in the README). Write down that finer revocation is out of scope.
+- [ ] **Syscall surface.** List which current syscalls survive unchanged, change, or disappear.
+- [ ] **Acceptance:** Alex has read and agreed to the doc, and it has a DEVLOGS entry.
+
+## 3. Phase 7b: pilot on the fd table
+
+Ambient-authority sites in today's kernel (the actual targets):
+`open("name")` (global name lookup), `exec("name")` (global program lookup),
+`fork` (child inherits all authority), default fds 0/1/2 (console access assumed, not granted).
+
+- [ ] Turn the per-process fd table into the capability table from §2 (same storage, new meaning and rights).
+- [ ] `open` takes a **directory capability** plus a name. No more global lookup.
+- [ ] Console capabilities are granted explicitly to `init` at boot instead of being pre-filled in every process.
+- [ ] Rights are checked on `read`/`write` (e.g. a read-only file cap rejects `write` with `E_PERM`).
+- [ ] **Acceptance:** a test program without a directory capability cannot open any file; one with it can.
+      Existing programs still run after being given the caps they need.
+
+## 4. Phase 7c: spawn replaces fork + exec
+
+- [ ] `spawn(program_cap, caps_to_pass[], n)` creates a process from a program image with **only** the listed caps.
+- [ ] `fork`/`exec` removed, or kept only as long as needed during migration. Decide in §2 and record it.
+- [ ] `init` and the shell move to `spawn`. The shell passes the console caps to the programs it launches.
+- [ ] **Acceptance:** a spawned child that wasn't given the console cap can't print. A child given only a
+      read-only file cap can't open other files.
+
+## Later (not scheduled, don't start without moving it up)
+
+- argv passing on the new user stack
+- Kernel raw-mode console switch + user-space line editor (cursor, history)
+- Block device (VirtIO) → writable storage → filesystem built on capabilities
+- Finer-grained revocation
+
+---
+
+## Detours log
+
+Record any work done outside the current step: date, what, why.
+
+-
