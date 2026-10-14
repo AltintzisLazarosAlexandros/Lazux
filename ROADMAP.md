@@ -104,6 +104,7 @@ Ambient-authority sites in today's kernel (the actual targets):
 - Kernel raw-mode console switch + user-space line editor (cursor, history)
 - Block device (VirtIO) → writable storage → filesystem built on capabilities
 - Finer-grained revocation
+- Kernel: replace the two private `streq()` copies (`main.c`, `trap_handler.c`) with one compare in `lib/string.c`
 
 ---
 
@@ -111,4 +112,4 @@ Ambient-authority sites in today's kernel (the actual targets):
 
 Record any work done outside the current step: date, what, why.
 
--
+- 2026-10-14: user-space string module `user/mystring.c` (`ms_compare`, `ms_length`, `ms_copy`, `ms_concat`, …) ported from the CS-255 assignment 2 module and linked into every user program. Why: the `exit` built-in needs a string compare and `.elf` naming needs copy/concat; reusing tested code beat rewriting it.

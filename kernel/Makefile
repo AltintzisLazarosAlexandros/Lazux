@@ -119,19 +119,19 @@ MKRAMDISK = ../tools/mkramdisk
 # Then embedded into kernel via payload.o (binary inclusion).
 
 # Test fork syscall with debug output
-user/init.elf: user/start.S user/syscalls.c user/main.c user/lazux.h
-	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/init.elf user/start.S user/syscalls.c user/main.c
+user/init.elf: user/start.S user/syscalls.c user/mystring.c user/main.c user/lazux.h
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/init.elf user/start.S user/syscalls.c user/mystring.c user/main.c
 
-user/test2.elf: user/start.S user/syscalls.c user/test2.c user/lazux.h
-	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/test2.elf user/start.S user/syscalls.c user/test2.c
+user/test2.elf: user/start.S user/syscalls.c user/mystring.c user/test2.c user/lazux.h
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/test2.elf user/start.S user/syscalls.c user/mystring.c user/test2.c
 
 # Console input test: loops on read(0, ...) and reports each result
-user/readtest.elf: user/start.S user/syscalls.c user/readtest.c user/lazux.h
-	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/readtest.elf user/start.S user/syscalls.c user/readtest.c
+user/readtest.elf: user/start.S user/syscalls.c user/mystring.c user/readtest.c user/lazux.h
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/readtest.elf user/start.S user/syscalls.c user/mystring.c user/readtest.c
 
 # Lazux shell: prompt, read a line, run built-ins or fork + exec a program
-user/sh.elf: user/start.S user/syscalls.c user/sh.c user/lazux.h
-	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/sh.elf user/start.S user/syscalls.c user/sh.c
+user/sh.elf: user/start.S user/syscalls.c user/mystring.c user/sh.c user/lazux.h
+	$(CC) $(CFLAGS) -nostdlib -Wl,-Ttext=0x400000 -o user/sh.elf user/start.S user/syscalls.c user/mystring.c user/sh.c
 # Flag Meanings:
 #   -Wl,-Ttext=0x400000 = Link user program's text section at VA 0x400000
 #                        (user address space, kernel won't map here initially)

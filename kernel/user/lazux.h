@@ -102,3 +102,16 @@ int read(int fd, void *buffer, int size); /* Read from the console (fd 0, blocks
 int write(int fd, const void* buffer, int size); /* Write to a console fd (RAMDISK write unsupported) */
 
 int close(int fd); /* Close a file descriptor */
+
+/*
+ * String functions (user/mystring.c, ported from the CS-255 string module).
+ * ms_compare/ms_ncompare return 0 when equal, like strcmp/strncmp.
+ */
+size_t ms_length(const char *pcStr);
+void ms_copy(char *pcDest, const char *pcSrc);
+void ms_ncopy(char *pcDest, const char *pcSrc, size_t n);
+void ms_concat(char *pcDest, const char *pcSrc);
+void ms_nconcat(char *pcDest, const char *pcSrc, size_t n);
+int ms_compare(const char *pcStr1, const char *pcStr2);
+int ms_ncompare(const char *pcStr1, const char *pcStr2, size_t n);
+const char *ms_search(const char *pcHaystack, const char *pcNeedle);
