@@ -25,9 +25,16 @@
 int main() {
     printf("Lazux Shell Started!\n");
     int pid = fork();
-    
+
+    if (pid < 0) {
+        lz_error("init", lz_strerror(pid));
+        return 1;
+    }
     if (pid == 0) {
-        exec("sh.elf");
+        int err = exec("sh.elf");
+        /* exec only returns on failure; without exit() the child would fall through as a second init */
+        lz_error("init", lz_strerror(err));
+        exit(1);
     } else {
         int dead_child = wait();
         

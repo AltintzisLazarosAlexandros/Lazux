@@ -55,7 +55,7 @@ int main() {
     for (;;) {
         int n = read(0, buf, size);
         if (n < 0) {
-            printf("readtest: read error %d\n", n);
+            lz_error("readtest", lz_strerror(n));
             exit(1);
         }
 

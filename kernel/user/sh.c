@@ -64,7 +64,13 @@ int main() {
         if(argc == 0){
             continue;
         }
-        else {
+        if(ms_compare(args[0], "exit") == 0 ) {
+            if(argc == 1){
+                return 0;
+            }else{
+                lz_error("exit", "too many arguments");
+            }
+        }else {
             for(int i = 0; i < argc; i++){
                 printf("arg[%d] = [%s]\n", i, args[i]);
             }

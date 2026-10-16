@@ -5,7 +5,7 @@ int main() {
     
     int fd = open("init.elf");
     if (fd < 0) {
-        puts("Error: Could not open file!\n");
+        lz_error("test2", lz_strerror(fd));
         exit(1);
     }
     char buffer[5];
