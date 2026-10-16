@@ -12,6 +12,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "../include/errno.h" /* E_NOENT, E_PERM, ... - what syscalls return on failure */
 
 /*
  * putchar() - Output single character to console
@@ -102,6 +103,12 @@ int read(int fd, void *buffer, int size); /* Read from the console (fd 0, blocks
 int write(int fd, const void* buffer, int size); /* Write to a console fd (RAMDISK write unsupported) */
 
 int close(int fd); /* Close a file descriptor */
+
+/* Text for a Lazux error code (E_NOENT, E_PERM, ... from errno.h). */
+const char *lz_strerror(int err);
+
+/* Print "[who] what" on fd 2 - Lazux's perror(). E.g. lz_error("sh", lz_strerror(r)). */
+void lz_error(const char *who, const char *what);
 
 /*
  * String functions (user/mystring.c, ported from the CS-255 string module).

@@ -6,6 +6,7 @@
  */
 #include "lazux.h"
 #include "../include/syscall.h"
+#include "../include/errno.h"
 #include <stdint.h>
 #include <stdarg.h>
 /*
@@ -464,5 +465,42 @@ void putchar(char c) {
 /* puts() - Output a string via SYS_WRITE to stdout. */
 void puts(const char *str) {
     write(1, str, strlen(str));
+}
+
+/*
+ * lz_strerror() - Text for a Lazux error code (the negative values in errno.h).
+ *
+ * Worded for Lazux rather than copied from Unix strerror(), and describing
+ * what the code means here (E_AGAIN is "no free process slot" today).
+ */
+const char *lz_strerror(int err) {
+    switch (err) {
+    case E_NOENT: return "nothing by that name in the ramdisk";
+    case E_BADF:  return "that descriptor is not open";
+    case E_FAULT: return "the kernel refused a bad pointer";
+    case E_NOMEM: return "the kernel is out of memory";
+    case E_PERM:  return "not allowed";
+    case E_AGAIN: return "no free process slot, try again";
+    default:      return "unknown error";
+    }
+}
+
+/*
+ * lz_error() - Report an error as "[who] what" on fd 2.
+ *
+ * Lazux's answer to perror(): 'who' names the program or command that failed,
+ * 'what' says why - a fixed message or lz_strerror(code). The bracket format
+ * is deliberately not Unix's "who: what". fd 2 is the console today, like
+ * fd 1, but keeping errors on their own fd lets them be separated later.
+ *
+ *   lz_error("exit", "too many arguments");   ->  [exit] too many arguments
+ *   lz_error("sh", lz_strerror(E_NOENT));      ->  [sh] nothing by that name in the ramdisk
+ */
+void lz_error(const char *who, const char *what) {
+    write(2, "[", 1);
+    write(2, who, strlen(who));
+    write(2, "] ", 2);
+    write(2, what, strlen(what));
+    write(2, "\n", 1);
 }
 
