@@ -30,7 +30,7 @@ not by building everything on the old punch list.
 
 ### 1.1 Shell step 2: fork + exec + wait
 - [x] Parse the line: trim it and take the first word as the program name. An empty line just shows the prompt again. (2026-10-14, 9fdf77e)
-- [ ] Built-in `exit` runs in the shell itself, before any fork.
+- [x] Built-in `exit` runs in the shell itself, before any fork. (2026-10-16, 683e1fa)
 - [ ] External command: `fork()` → child `exec(name)` → parent `wait()`.
 - [ ] **Child exits if `exec` fails** (prints an error and calls `exit(1)`). Without this, the failed child becomes
       a second shell competing for fd 0.
