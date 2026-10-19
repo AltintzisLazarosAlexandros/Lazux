@@ -74,15 +74,38 @@ useful, and keep the model small.
 - [ ] **Bootstrap.** What capabilities `init` starts with, and who grants them (the kernel at boot).
 - [ ] **Passing.** How a child gets capabilities: explicitly listed at creation, nothing inherited implicitly.
 - [ ] **Revocation.** v1 = coarse "kill the domain" (as in the README). Write down that finer revocation is out of scope.
-- [ ] **Syscall surface.** List which current syscalls survive unchanged, change, or disappear.
+- [ ] **Syscall surface.** Confirm or change every row of the migration map below and copy the final
+      version into `docs/capabilities.md`.
 - [ ] **Acceptance:** Alex has read and agreed to the doc, and it has a DEVLOGS entry.
+
+### Unix syscall migration map (proposal, to be confirmed in this step)
+
+The question for each syscall: *does it grant access without an explicit grant?* If yes, it changes.
+
+| # | Today | Ambient authority? | Proposed fate | Done in |
+|---|---|---|---|---|
+| 1 | `SYS_PUTCHAR` | **Yes**: prints with no fd/cap at all | **Remove.** All output goes through `write(console_cap, …)` | §3 |
+| 2 | `SYS_EXIT` | No | Keep as is | — |
+| 3 | `SYS_FORK` | **Yes**: child inherits all memory + all caps | **Remove**, replaced by `spawn` | §4 |
+| 4 | `SYS_EXEC(name)` | **Yes**: global program lookup by name | **Remove**, folded into `spawn(program_cap, …)` | §4 |
+| 5 | `SYS_WAIT` | **Yes**: implicit parent/child link via `parent_pid` | **Change** to `wait(process_cap)`, where the cap is returned by `spawn` | §4 |
+| 6 | `SYS_SBRK` | Mild: any process can grow up to `heap_max` | **Keep for v1** as a per-process quota. Memory-as-capability is out of scope (record this) | — |
+| 7 | `SYS_OPEN(name)` | **Yes**: global name lookup | **Change** to `open(dir_cap, name)` | §3 |
+| 8 | `SYS_READ` | No (needs an fd) | Keep, add a rights check | §3 |
+| 9 | `SYS_WRITE` | No (needs an fd) | Keep, add a rights check | §3 |
+| 10 | `SYS_CLOSE` | No | Keep; it now means "drop this capability" | §3 |
+| new | `SYS_SPAWN` | — | `spawn(program_cap, caps[], n)` returns a process cap | §4 |
+| new | cap derive/dup? | — | Decide whether a holder can make a reduced-rights copy (needed to hand a child a read-only cap) | §2 |
 
 ## 3. Phase 7b: pilot on the fd table
 
 Ambient-authority sites in today's kernel (the actual targets):
 `open("name")` (global name lookup), `exec("name")` (global program lookup),
-`fork` (child inherits all authority), default fds 0/1/2 (console access assumed, not granted).
+`fork` (child inherits all authority), `wait` (implicit parent/child link), `SYS_PUTCHAR` (console with no
+fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `exec` and `wait` are handled in §4.
 
+- [ ] Remove `SYS_PUTCHAR` (kernel case + user wrapper). User `putchar` already uses `write(1, …)`, so this
+      should be a deletion, not a migration. Do this **first**: until it's gone, no console test can pass.
 - [ ] Turn the per-process fd table into the capability table from §2 (same storage, new meaning and rights).
 - [ ] `open` takes a **directory capability** plus a name. No more global lookup.
 - [ ] Console capabilities are granted explicitly to `init` at boot instead of being pre-filled in every process.
@@ -92,11 +115,20 @@ Ambient-authority sites in today's kernel (the actual targets):
 
 ## 4. Phase 7c: spawn replaces fork + exec
 
-- [ ] `spawn(program_cap, caps_to_pass[], n)` creates a process from a program image with **only** the listed caps.
+- [ ] `spawn(program_cap, caps_to_pass[], n)` creates a process from a program image with **only** the listed caps,
+      and returns a **process capability** to the caller.
+- [ ] `wait(process_cap)` replaces `wait()`. The parent/child relationship becomes "whoever holds the process cap",
+      and `parent_pid` is removed from the PCB, or kept only for debug output.
+- [ ] Decide what happens to a process cap when its target exits (zombie until the cap is closed or waited on).
+- [ ] Coarse revocation: a `kill(process_cap)` or equivalent, matching "kill the domain" from §2. Can be deferred
+      if §2 says so.
 - [ ] `fork`/`exec` removed, or kept only as long as needed during migration. Decide in §2 and record it.
+      Remember `vmm_copy_uvm` exists only for `fork`; if fork goes, it goes too.
 - [ ] `init` and the shell move to `spawn`. The shell passes the console caps to the programs it launches.
+      (The fork/exec code from §1.1 gets replaced here. That's expected; §1.1 only proves the path works.)
 - [ ] **Acceptance:** a spawned child that wasn't given the console cap can't print. A child given only a
-      read-only file cap can't open other files.
+      read-only file cap can't open other files. A process that doesn't hold a process cap can't wait on
+      or kill that process.
 
 ## Later (not scheduled, don't start without moving it up)
 
