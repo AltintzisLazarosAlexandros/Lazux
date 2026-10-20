@@ -138,3 +138,13 @@ void sleep_on(void *chan);
  * interrupt context (the UART ISR uses it).
  */
 void wakeup(void *chan);
+
+/*
+ * exit_current() - End current_proc: SYS_EXIT and fatal U-mode faults.
+ *
+ * Marks the process ZOMBIE, wakes its parent (which may be asleep in wait())
+ * and returns schedule(tf), so the caller must return its result. Memory is
+ * not freed here - the kernel is still running on this process's kernel
+ * stack and page table. The parent's wait() frees it via free_proc().
+ */
+trap_frame_t* exit_current(trap_frame_t *tf);

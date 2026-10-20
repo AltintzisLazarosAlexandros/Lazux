@@ -316,7 +316,7 @@ int load_elf(process_t *p, const uint8_t *elf_data) {
 	
 	/* Heap grows upward from end of loaded segments; cap at stack base. */
 	p->heap_break = (max_end + 4095) & ~4095;
-	p->heap_max = stack_base; /* stack_base is bottom of user stack */
+	p->heap_max = stack_base - 4096; /* stack_base is bottom of user stack */
     
 	return 0;
 }
@@ -355,6 +355,31 @@ void wakeup(void *chan){
 			process_table[i].chan = 0;
 		}
 	}
+}
+
+/*
+ * exit_current() - End the running process. See the contract in proc.h.
+ *
+ * Shared by SYS_EXIT and the U-mode fault path, so a crashing program ends
+ * exactly like one that called exit(): its parent's wait() reaps it.
+ */
+trap_frame_t* exit_current(trap_frame_t *tf){
+	current_proc->state = PROC_ZOMBIE;
+
+	/*
+	 * Wake the parent if it is sitting in wait(). A parent sleeps on its own
+	 * PCB address, so that pointer is the channel. wakeup() is a no-op when
+	 * the parent is not actually waiting.
+	 */
+	for(int i = 0; i < MAX_PROCS; i++){
+		if(process_table[i].pid == current_proc->parent_pid &&
+		   process_table[i].state != PROC_UNUSED){
+			wakeup(&process_table[i]);
+			break;
+		}
+	}
+
+	return schedule(tf);
 }
 
 /* Round-robin scan for the next READY slot, starting just after 'from'. */

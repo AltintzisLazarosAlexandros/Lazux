@@ -42,8 +42,8 @@ make clean
 | `arch/riscv/uart.c` | NS16550A console input + canonical line discipline: `uart_init` (IER), `uart_intr` (drain → escape/backspace/Enter handling → RX ring + echo; `wakeup` on commit), `uart_getc` (-1 if no committed byte), `uart_rx_chan` (wait channel) |
 | `arch/riscv/payload.S` | `.incbin ramdisk.img` → `_ramdisk_start/_ramdisk_end` |
 | `mm/pmm.c` | bitmap page allocator, 4KB frames, 128MB tracked |
-| `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
-| `proc/process.c` | process table, `alloc_proc`, `load_elf`, `schedule`, `sleep_on`/`wakeup`, `free_proc` |
+| `mm/vmm.c` | Sv39: `map_page`, `vmm_lookup`, `vmm_unmap_range` (unmap + free frames + `sfence.vma`), `vmm_map_kernel` (RAM + UART/PLIC MMIO), `vmm_copy_uvm` (merges into existing child tables) |
+| `proc/process.c` | process table, `alloc_proc`, `load_elf`, `schedule`, `sleep_on`/`wakeup`, `exit_current` (shared by `SYS_EXIT` + U-mode faults), `free_proc` |
 | `main.c` | `kmain`: PMM → VMM/MMU → procs → load `init.elf` from RAMDISK → arm timer → U-mode |
 | `include/` | `proc.h` (PCB, constants), `platform.h` (board memory map: UART0/PLIC base, size, IRQ), `syscall.h`, `errno.h`, `vmm.h`, `mkramdisk.h`, `plic.h`, `uart.h` (UART registers/bits), … |
 | `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers, `lz_error`/`lz_strerror`), `mystring.c` (`lz_*` string functions), `lazux.h` (includes `errno.h`), `main.c` (init: fork → exec `sh.elf` → wait), `sh.c` (the shell), `test2.c`, `readtest.c` (console input test) |
@@ -54,7 +54,12 @@ make clean
 - Kernel loads at `0x80200000`; full-RAM identity map in every page table, **W^X split**:
   `.text` R+X, `.rodata`+RAMDISK R, everything else R+W. User ELF segments: `PTE_X` dropped if `PTE_W`.
 - User programs link at `0x400000`; one root page table per process (kernel mappings rebuilt per process, never shared).
-- Single hart, no SMP. Unexpected **S-mode faults are fatal** (fail-fast); user faults → error codes.
+- User address space: ELF at `0x400000`, heap from the page after the ELF up to `heap_max = 0x3FFFE000`, one
+  **unmapped guard page** `0x3FFFE000`, then the single 4KB stack page `0x3FFFF000` (sp starts at `0x40000000`).
+  `SYS_SBRK` is **all-or-nothing**: if the PMM runs out partway, `vmm_unmap_range` undoes the pages it mapped.
+- Single hart, no SMP. Unexpected **S-mode faults are fatal** (fail-fast). Bad syscall pointers → error codes.
+  A **U-mode fault** (page fault, illegal instruction, …) prints `[TRAP] U-mode fault (kill)` and ends the process
+  via `exit_current()` exactly like `exit()`: ZOMBIE → wake parent → `schedule`; the parent's `wait()` reaps it.
 - Every user pointer must pass `user_range_ok()` / `user_str_ok()` before the kernel touches it (else `E_FAULT`).
 - `sstatus.SUM` is set on syscall entry and cleared in `switch_to_user`.
 - **Blocking pattern:** `sleep_on(chan); tf->sepc -= 4; return schedule(tf);` — the ecall re-runs on wake
@@ -154,7 +159,10 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
     Verified scripted: `test2`, `nosuch`, 60-char name, `exit x`, then a single `exit` halts. §1.1 complete.
   - String helpers renamed `ms_*` → `lz_*` (2026-10-20, Claude, on request).
 - ✅ ROADMAP §1.2 docs catch-up (2026-10-20): README Phase 6 list, `main.c` uses `MAX_PROCS`.
-- ⏳ **Next:** §1.3 optional heap guard, §1.4 close
+- ✅ ROADMAP §1.3 (2026-10-20): heap guard page (user-written: `heap_max = stack_base - 4096`). Detour, found while
+  testing it: U-mode faults froze the kernel (`for (;;) {}`) → now `exit_current()` (Claude-written, on request);
+  `SYS_SBRK` leaked frames when the PMM ran out partway → `vmm_unmap_range()` rollback (user-written, fixed up by Claude).
+- ⏳ **Next:** §1.4 close
   Phase 6, then Phase 7 (capabilities; the user expanded §2–§4 with a syscall migration map — fork/exec/putchar go).
 - Phase 6 leftovers (RAMDISK writes, filesystem API, heap reclaim) are to be **deferred**, not built (ROADMAP §1.4).
 

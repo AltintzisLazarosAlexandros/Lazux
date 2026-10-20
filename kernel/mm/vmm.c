@@ -160,6 +160,35 @@ int map_page(page_table_t *root, uintptr_t va, uintptr_t pa, uint64_t flags)
 	return 0;
 }
 
+/*
+ * vmm_unmap_range() - Undo map_page() for every page in [start, end)
+ *
+ * The opposite of map_page() for user pages: for each page, find its leaf PTE,
+ * give the physical frame back to the PMM and clear the PTE. start and end are
+ * page-aligned. Intermediate tables are kept; vmm_free_pt() frees them when the
+ * process dies.
+ *
+ * Pages that are not mapped are skipped, so a caller can pass a range without
+ * knowing exactly which pages exist. First user: SYS_SBRK rolling back a
+ * half-finished heap growth when the PMM runs out.
+ */
+void vmm_unmap_range(page_table_t *root, uintptr_t start, uintptr_t end){
+	for (uintptr_t a = start; a < end; a += 4096) {
+		pte_t *pte = vmm_lookup(root, a);           /* 1. find the leaf PTE */
+		if (pte == 0 || !(*pte & PTE_V))
+			continue;                           /* nothing mapped here */
+		pmm_free_page((void *)PTE_TO_PA(*pte));     /* 2. free the frame */
+		*pte = 0;                                   /* 3. unmap */
+	}
+
+	/*
+	 * The TLB may still cache the translations we just removed; until it is
+	 * flushed, the CPU could keep using a frame the PMM now hands to someone
+	 * else. One flush after the loop covers every page.
+	 */
+	__asm__ volatile("sfence.vma zero, zero" : : : "memory");
+}
+
 extern uint8_t __text_start[], __text_end[];
 extern uint8_t __rodata_start[], __rodata_end[];
 

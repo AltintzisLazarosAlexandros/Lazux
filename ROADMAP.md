@@ -49,8 +49,9 @@ not by building everything on the old punch list.
 - [x] Add a pointer to this file in `CLAUDE.md` ("Working plan: see `ROADMAP.md`"). (2026-10-14, 9fdf77e)
 
 ### 1.3 Optional, only if cheap
-- [ ] Heap guard page between `heap_max` and the user stack (unmapped page, so overflow faults instead of corrupting).
+- [x] Heap guard page between `heap_max` and the user stack (unmapped page, so overflow faults instead of corrupting).
       Skip if it takes more than a short session; record it as deferred instead.
+      (2026-10-20: `heap_max = stack_base - 4096`; plus the two bug fixes in the Detours log)
 
 ### 1.4 Close Phase 6
 - [ ] DEVLOGS entry "Phase 6 complete", stating what Phase 6 delivered **and the explicit deferrals**:
@@ -146,3 +147,7 @@ fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `ex
 Record any work done outside the current step: date, what, why.
 
 - 2026-10-14: user-space string module `user/mystring.c` (`lz_compare`, `lz_length`, `lz_copy`, `lz_concat`, …) ported from the CS-255 assignment 2 module and linked into every user program. Why: the `exit` built-in needs a string compare and `.elf` naming needs copy/concat; reusing tested code beat rewriting it.
+- 2026-10-20: two kernel bugs found while testing the §1.3 heap guard, fixed before closing Phase 6 (Alex's call, so
+  Phase 6 closes without known holes): (1) a U-mode fault prints "(kill)" but spins in `for (;;) {}` in the kernel,
+  freezing the system - it should end the process like `SYS_EXIT`; (2) `SYS_SBRK` keeps the pages it already mapped
+  when `pmm_alloc_page` fails partway, and the next sbrk re-maps those addresses, leaking the old frames for good.

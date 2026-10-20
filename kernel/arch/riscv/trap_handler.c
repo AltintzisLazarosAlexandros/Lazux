@@ -292,25 +292,8 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             sbi_puts(" became a ZOMBIE.\n");
 	    #endif
             
-            current_proc->state = PROC_ZOMBIE;
-
-            /*
-             * Wake the parent if it is sitting in wait(). A parent sleeps on
-             * its own PCB address, so that pointer is the channel. wakeup() is
-             * a no-op when the parent is not actually waiting.
-             */
-            {
-                extern process_t process_table[MAX_PROCS];
-                for(int i = 0; i < MAX_PROCS; i++) {
-                    if(process_table[i].pid == current_proc->parent_pid &&
-                       process_table[i].state != PROC_UNUSED) {
-                        wakeup(&process_table[i]);
-                        break;
-                    }
-                }
-            }
-
-            return schedule(tf);
+            /* ZOMBIE + wake the parent + reschedule (process.c). */
+            return exit_current(tf);
         
         case SYS_FORK: /* SYS_FORK: create child process */
         {
@@ -605,9 +588,16 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
 
             uintptr_t old_page_end = (old_break + 4095) & ~4095;
             uintptr_t new_page_end = (new_break + 4095) & ~4095;
+            /*
+             * All or nothing: on failure, unmap and free the pages this call
+             * already mapped ([old_page_end, addr)). heap_break doesn't move,
+             * so pages left mapped would be re-mapped by the next sbrk and
+             * their frames lost for good.
+             */
             for (uintptr_t addr = old_page_end; addr < new_page_end; addr += 4096) {
                 void *phys_page = pmm_alloc_page();
                 if (!phys_page) {
+                    vmm_unmap_range(current_proc->page_table, old_page_end, addr);
                     tf->a0 = E_NOMEM;
                     return tf;
                 }
@@ -616,6 +606,7 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
                 uint64_t flags = PTE_U | PTE_R | PTE_W;
                 if (map_page(current_proc->page_table, addr, (uintptr_t)phys_page, flags) != 0) {
                     pmm_free_page(phys_page);
+                    vmm_unmap_range(current_proc->page_table, old_page_end, addr);
                     tf->a0 = E_NOMEM;
                     return tf;
                 }
@@ -826,8 +817,11 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
         puthex(tf->stval);  /* Fault value (address for page faults) */
         sbi_puts("\n");
         
-        /* Kill user process and let system stabilize */
-        for (;;) {}
+        /*
+         * The bug is in the user program, not the kernel: end it as if it had
+         * called exit(), so its parent's wait() reaps it and the system goes on.
+         */
+        return exit_current(tf);
     }
 
     return tf;
