@@ -63,14 +63,14 @@ What exists so far:
 With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
 
 Phase 6 steps involve:
-- Formalized file descriptor error codes (`include/errno.h`).
-- Syscall pointer validation and W^X enforcement (kernel map + ELF loader).
+- ~~Formalized file descriptor error codes~~ Done: `include/errno.h`.
+- ~~Syscall pointer validation and W^X enforcement~~ Done: every user pointer checked; W^X on the kernel map and ELF segments.
 - Expanding RAMDISK write policy (currently permanently read-only, returns `E_PERM`).
 - Extending RAMDISK parsing into a basic filesystem API.
 - Adding heap safety improvements (limits, reclaim, and guard regions).
 - ~~Asynchronous I/O exploration~~ Done: interrupt-driven UART input with blocking console `read()`.
 - ~~Console line discipline~~ Done: canonical mode (Backspace, line-at-a-time reads, escape sequences swallowed).
-- Minimal interactive shell; later a raw-mode switch for a user-space line editor.
+- ~~Minimal interactive shell~~ Done: `sh.elf` runs ramdisk programs (`test2` → fork, exec `test2.elf`, wait), `exit` built-in. Later: a raw-mode switch for a user-space line editor.
 
 ---
 

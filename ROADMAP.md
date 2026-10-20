@@ -42,10 +42,10 @@ not by building everything on the old punch list.
 - Out of scope for now: argv, pipes, redirection, job control, line editing (raw mode). See §4.
 
 ### 1.2 Docs catch up with the code
-- [ ] `CLAUDE.md` boot expectation: init execs **`sh.elf`** (not `readtest.elf`). Update the scripted-run notes.
-- [ ] `CLAUDE.md` current status: the shell is in progress, not "Next".
-- [ ] README Phase 6 list: mark error codes + pointer validation as done.
-- [ ] `main.c`: replace `process_table[64]` with `MAX_PROCS`.
+- [x] `CLAUDE.md` boot expectation: init execs **`sh.elf`** (not `readtest.elf`). Update the scripted-run notes. (2026-10-20)
+- [x] `CLAUDE.md` current status: the shell is in progress, not "Next". (2026-10-20, now marked done)
+- [x] README Phase 6 list: mark error codes + pointer validation as done. (2026-10-20, shell too)
+- [x] `main.c`: replace `process_table[64]` with `MAX_PROCS`. (2026-10-20)
 - [x] Add a pointer to this file in `CLAUDE.md` ("Working plan: see `ROADMAP.md`"). (2026-10-14, 9fdf77e)
 
 ### 1.3 Optional, only if cheap

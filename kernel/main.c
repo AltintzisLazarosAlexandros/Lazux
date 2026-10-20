@@ -29,7 +29,7 @@ extern int load_elf(process_t *p, const uint8_t *elf_data);  /* Parse and load E
 extern process_t* alloc_proc(void);     /* Create a new process */
 extern void *memset(void *dest, int value, size_t count);    /* Zero/fill memory */
 extern uint64_t read_time(void);        /* Read current timer value */
-extern process_t process_table[64];     /* Global process table */
+extern process_t process_table[MAX_PROCS]; /* Global process table */
 extern process_t* current_proc;         /* Currently executing process */
 extern uint8_t _ramdisk_start[];        /* Embedded RAM disk image start */
 extern uint8_t _ramdisk_end[];          /* Embedded RAM disk image end */

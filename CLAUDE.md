@@ -153,10 +153,10 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
     exec prints `[name] <lz_strerror>` and the child `exit(1)`s; a failed fork prints `[fork] <lz_strerror>`.
     Verified scripted: `test2`, `nosuch`, 60-char name, `exit x`, then a single `exit` halts. §1.1 complete.
   - String helpers renamed `ms_*` → `lz_*` (2026-10-20, Claude, on request).
-- ⏳ **Next:** ROADMAP §1.2 docs (README Phase 6 list, `main.c` `MAX_PROCS`), §1.3 optional heap guard, §1.4 close
+- ✅ ROADMAP §1.2 docs catch-up (2026-10-20): README Phase 6 list, `main.c` uses `MAX_PROCS`.
+- ⏳ **Next:** §1.3 optional heap guard, §1.4 close
   Phase 6, then Phase 7 (capabilities; the user expanded §2–§4 with a syscall migration map — fork/exec/putchar go).
 - Phase 6 leftovers (RAMDISK writes, filesystem API, heap reclaim) are to be **deferred**, not built (ROADMAP §1.4).
-- Minor cleanup: `main.c` still declares `extern process_t process_table[64]` — use `MAX_PROCS` (ROADMAP §1.2).
 
 ### Working style (how this collaboration runs — keep it)
 - The user (Alex) writes the code; Claude explains, reviews, tests in QEMU, writes docs/commits/vault notes, and
