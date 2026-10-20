@@ -108,9 +108,10 @@ Errors (`errno.h`): `E_NOENT -1`, `E_BADF -2`, `E_FAULT -3`, `E_NOMEM -4`, `E_PE
    `ramdisk.img` dependencies + `$(MKRAMDISK)` args, and to `clean`.
 3. Run it via `exec("foo.elf")`.
 
-## Current status (as of 2026-10-19)
+## Current status (as of 2026-10-20)
 
-Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
+Phases 0–6 complete (**Phase 6 closed 2026-10-20**, DEVLOGS 20-10-2026). **Phase 7 (capabilities)** is next: ROADMAP §2,
+Phase 7a = design doc `docs/capabilities.md` only, no kernel code until the user agrees to it.
 
 - ✅ Hardening (commit `969ce51`): pointer validation, errno codes, W^X, several VMM/PMM/fork fixes.
 - ✅ **Stage A — blocking I/O groundwork (commit `5fe6a11`):** `sleep_on`/`wakeup` wait channels + `chan`
@@ -162,9 +163,10 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 - ✅ ROADMAP §1.3 (2026-10-20): heap guard page (user-written: `heap_max = stack_base - 4096`). Detour, found while
   testing it: U-mode faults froze the kernel (`for (;;) {}`) → now `exit_current()` (Claude-written, on request);
   `SYS_SBRK` leaked frames when the PMM ran out partway → `vmm_unmap_range()` rollback (user-written, fixed up by Claude).
-- ⏳ **Next:** §1.4 close
-  Phase 6, then Phase 7 (capabilities; the user expanded §2–§4 with a syscall migration map — fork/exec/putchar go).
-- Phase 6 leftovers (RAMDISK writes, filesystem API, heap reclaim) are to be **deferred**, not built (ROADMAP §1.4).
+- ✅ ROADMAP §1.4 (2026-10-20): Phase 6 closed by explicit deferral — DEVLOGS 20-10-2026 + README. Deferred: RAMDISK
+  writes (→ real block device), filesystem API (→ after capabilities), heap reclaim (no pressure).
+- ⏳ **Next: Phase 7a** (ROADMAP §2): the capability design doc. Claude's role there is to argue and poke holes, keep
+  the model small; the user expanded §2–§4 with a syscall migration map (fork/exec/putchar go, spawn arrives).
 
 ### Working style (how this collaboration runs — keep it)
 - The user (Alex) writes the code; Claude explains, reviews, tests in QEMU, writes docs/commits/vault notes, and

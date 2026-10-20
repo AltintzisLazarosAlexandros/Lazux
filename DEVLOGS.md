@@ -661,3 +661,43 @@ The console now hands programs finished, edited lines. Backspace edits the line 
 
 ### Next
 - Minimal user-space shell (read line -> fork + exec -> wait). Later, a raw-mode switch plus a user-space line editor.
+
+---
+
+## 20-10-2026 — Phase 6 Complete: Interactive Shell, Fault Isolation, Explicit Deferrals
+
+### Summary
+Phase 6 is closed. Lazux boots into an interactive shell that runs programs from the RAMDISK, a crashing user program no longer takes the system down, and the heap can no longer grow into the stack. The remaining items on the original Phase 6 list (RAMDISK writes, a filesystem API, heap reclaim) are **deferred on purpose**, not abandoned: each one depends on something that does not exist yet. Phase 7 (capability-based authority) starts next.
+
+### What Phase 6 delivered
+- **RAMDISK file I/O and filename `exec`** (21-05 / 22-05-2026): `SYS_OPEN`, `SYS_READ`, `SYS_CLOSE`, console `SYS_WRITE`, per-process fd tables, `exec("name.elf")` by RAMDISK lookup.
+- **Hardening** (10-07-2026, `969ce51`): syscall pointer validation (`user_range_ok`/`user_str_ok`), `errno.h` error codes, W^X on the kernel map and on user ELF segments, VMM/PMM/fork fixes.
+- **Blocking I/O and the interactive UART console** (01-10-2026, Stages A + B): wait channels, an idling scheduler, PLIC + UART drivers, blocking console `read(0, ...)`.
+- **Console line discipline** (01-10-2026, `27a147f`): canonical mode with Backspace editing and escape sequences swallowed.
+- **User-space shell `sh.elf`** (09-10 to 20-10-2026; shell code user-written):
+  - prompt `lazux> `, `read_line()` and in-place word splitting (`acac2ae`, `2699144`, `9fdf77e`);
+  - `exit` built-in (`exit <args>` → `[exit] too many arguments`) (`683e1fa`);
+  - external commands: the user types `test2`, the shell appends `.elf`, forks, the child execs and the parent `wait()`s. A failed exec prints the reason and the child exits, so only one shell ever reads fd 0 (`7dc876b`).
+  - init (pid 1) forks and execs the shell as pid 2 (`ac5dac1`).
+- **User library helpers:** `lz_error`/`lz_strerror` (Lazux's perror, `[who] what` on fd 2) and the `lz_*` string module ported from the author's CS-255 code (`79c0edb`, `32d6760`, renamed from `ms_*` in `7dc876b`).
+- **Heap guard page** (`fff257b`): `heap_max = stack_base - 4096`, so the page under the 4KB user stack is never mapped and a stack overflow faults instead of silently overwriting heap data.
+- **U-mode faults end the process** (`fff257b`): the fault path printed "(kill)" and then spun forever in S-mode, freezing the system. `exit_current()` (ZOMBIE → wake parent → schedule) is now shared by `SYS_EXIT` and the fault path, so a crashing program is reaped by its parent's `wait()` like a normal exit.
+- **All-or-nothing `SYS_SBRK`** (`fff257b`): when the PMM ran out partway, sbrk kept the pages it had mapped, the next sbrk re-mapped them and the old frames were lost for good. New `vmm_unmap_range()` (unmap, free the frames, `sfence.vma`) rolls the call back.
+
+### Explicit deferrals (not built in Phase 6, on purpose)
+- **RAMDISK write support → deferred to a real block device.** The RAMDISK is part of the kernel image and mapped read-only under W^X; making it writable would weaken that split for data that is lost at reboot anyway. Writes keep returning `E_PERM`.
+- **Filesystem API → deferred until the capability model exists.** A filesystem designed now would be built around global path names, which is exactly the ambient authority Phase 7 removes. It will be designed on top of capabilities instead.
+- **Heap reclaim (shrinking `sbrk`) → deferred, no current pressure.** Negative increments still return `E_PERM`; memory comes back when the process exits.
+
+### Known limitations carried forward
+- The user stack is a single 4KB page.
+- `wait()` returns the child's pid but no exit status.
+- The shell has no arguments (argv) for programs, pipes or redirection; the console has no raw mode, so no cursor movement or history (planned for user space). Ctrl-U (kill line) is not implemented.
+
+### Verification
+- Clean `make clean && make` with `-Wall -Wextra -Werror`.
+- Scripted QEMU runs: `test2` runs and returns to the prompt; `nosuch` → `[nosuch] nothing by that name in the ramdisk`; a 60-character name → too-long error; `exit x` → too many arguments; a single `exit` halts ("All processes have finished. System Halting.").
+- Throwaway fault test (not committed): three rounds of an out-of-memory `sbrk` each followed by a successful `sbrk(4096)` (it failed before the rollback fix); a deliberate stack overflow faults at `0x3FFFE8xx` (the guard page) twice in a row, and each time the shell comes back.
+
+### Next: Phase 7 - capability-based authority
+Phase 7a is design only: `docs/capabilities.md` defines what a capability is (likely an index into a per-process kernel table, like an fd today), the v1 object types, rights, bootstrap, passing and coarse revocation, plus the Unix-syscall migration map (fork/exec/putchar go; spawn arrives). No kernel change before that doc is agreed. See `ROADMAP.md` §2–§4.

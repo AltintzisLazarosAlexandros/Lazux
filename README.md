@@ -4,7 +4,7 @@ Lazux is an experimental operating system project focused on **kernel design fro
 
 The goal of this project is **not** to reimplement Linux, Windows, or any existing general-purpose OS, but to design and build a **small, understandable, and principled kernel** with clear architectural decisions, explicit authority, and predictable behavior.
 
-This repository currently tracks **Phase 4 (Preemptive Multitasking & ELF Loading) COMPLETE** and **Phase 5 COMPLETE**, with Phase 6 underway.
+This repository currently tracks **Phases 0–6 COMPLETE** (most recently Phase 6, Filesystem and I/O Expansion, which ends with an interactive shell), with **Phase 7 (capability-based authority)** starting.
 
 ---
 
@@ -28,7 +28,7 @@ This is a learning-driven but serious systems project, with correctness and clar
 
 ## Current Status
 
-✅ **Phase 4 Complete** and **Phase 5 Complete**: The project has evolved into a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 delivered user-space heap growth (`SYS_SBRK`), a minimal user-space `printf`, and RAMDISK-backed program loading by filename.
+✅ **Phase 6 Complete** (20-10-2026): Lazux boots into an interactive shell (`lazux>`) that runs programs from the RAMDISK, a crashing user program is cleaned up without taking the system down, and the user heap is separated from the stack by a guard page. In **Phases 4 and 5** the project became a **fully-functional Preemptive Multitasking OS** capable of loading and executing multiple independent ELF64 binaries written in standard C, with automatic context switching driven by hardware timer interrupts. Process isolation is enforced entirely by the MMU. Phase 5 delivered user-space heap growth (`SYS_SBRK`), a minimal user-space `printf`, and RAMDISK-backed program loading by filename.
 
 What exists so far:
 - RISC-V kernel running under **QEMU (virt platform)**
@@ -58,16 +58,22 @@ What exists so far:
 - **Blocking I/O** (`sleep_on`/`wakeup` wait channels; blocked syscalls re-run on wake; the scheduler idles with `wfi` instead of halting when every process is blocked)
 - **External Interrupts via the PLIC** (UART0 IRQ 10 routed to S-mode; device MMIO identity-mapped R+W in every page table and preserved across fork)
 - **Interactive UART Console** (interrupt-driven NS16550A input driver with a 128-byte RX ring and echo; canonical line discipline with Backspace editing; `read(0, ...)` blocks until a line is entered)
+- **User-Space Shell** (`sh.elf`, started by init: prompt, word splitting, `exit` built-in; typing `test2` forks, execs `test2.elf` and waits; a failed exec ends only the child)
+- **User-Fault Isolation** (a U-mode page fault or illegal instruction ends only that process, which its parent reaps like a normal `exit`; kernel-mode faults stay fatal)
+- **Heap Guard Page and All-or-Nothing `sbrk`** (an unmapped page between the heap limit and the user stack; a failed heap growth unmaps and frees what it had mapped)
 
-### Current Focus: Phase 6 - Filesystem and I/O Expansion
-With RAMDISK-backed loading in place, Phase 6 expands file I/O and runtime program management.
+### Current Focus: Phase 7 - Capability-Based Authority
+Phase 7 replaces ambient authority (global file names, fork/exec inheriting everything) with explicit capabilities. It starts with a design document only (`docs/capabilities.md`: what a capability is, object types, rights, bootstrap, passing, coarse revocation); no kernel change before it is agreed. See `ROADMAP.md`.
 
-Phase 6 steps involve:
+### Phase 6 - Filesystem and I/O Expansion (Complete)
+With RAMDISK-backed loading in place, Phase 6 expanded file I/O and runtime program management.
+
+Phase 6 steps:
 - ~~Formalized file descriptor error codes~~ Done: `include/errno.h`.
 - ~~Syscall pointer validation and W^X enforcement~~ Done: every user pointer checked; W^X on the kernel map and ELF segments.
-- Expanding RAMDISK write policy (currently permanently read-only, returns `E_PERM`).
-- Extending RAMDISK parsing into a basic filesystem API.
-- Adding heap safety improvements (limits, reclaim, and guard regions).
+- Expanding RAMDISK write policy: **deferred** to a real block device. The RAMDISK stays read-only under W^X (writes return `E_PERM`).
+- Extending RAMDISK parsing into a basic filesystem API: **deferred** until the capability model exists, so it is not designed around global names.
+- ~~Heap safety improvements~~ Done: limit (`heap_max`), guard page under the stack, all-or-nothing `sbrk`. Heap reclaim (shrinking `sbrk`) **deferred**, no current pressure.
 - ~~Asynchronous I/O exploration~~ Done: interrupt-driven UART input with blocking console `read()`.
 - ~~Console line discipline~~ Done: canonical mode (Backspace, line-at-a-time reads, escape sequences swallowed).
 - ~~Minimal interactive shell~~ Done: `sh.elf` runs ramdisk programs (`test2` → fork, exec `test2.elf`, wait), `exit` built-in. Later: a raw-mode switch for a user-space line editor.

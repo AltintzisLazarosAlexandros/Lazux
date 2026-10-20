@@ -54,11 +54,11 @@ not by building everything on the old punch list.
       (2026-10-20: `heap_max = stack_base - 4096`; plus the two bug fixes in the Detours log)
 
 ### 1.4 Close Phase 6
-- [ ] DEVLOGS entry "Phase 6 complete", stating what Phase 6 delivered **and the explicit deferrals**:
+- [x] DEVLOGS entry "Phase 6 complete", stating what Phase 6 delivered **and the explicit deferrals**:
   - RAMDISK write support → deferred to a real block device (the RAMDISK is read-only by design under W^X).
   - Filesystem API → deferred until the capability model exists, so it isn't designed around global names.
   - Heap reclaim (shrinking `sbrk`) → deferred, no current pressure.
-- [ ] README: Phase 6 complete, Phase 7 (capabilities) started.
+- [x] README: Phase 6 complete, Phase 7 (capabilities) started. (2026-10-20, both: DEVLOGS 20-10-2026)
 
 ---
 
