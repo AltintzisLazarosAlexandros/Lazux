@@ -1,8 +1,10 @@
 /*
  * user/sh.c - The Lazux shell
  *
- * Step 1: show a prompt, read one line from the console (fd 0), print it back.
- * Later steps add parsing, built-in commands and fork + exec + wait.
+ * Shows a prompt, reads one line from the console (fd 0) and splits it into
+ * words. `exit` is a built-in; any other word names a program in the ramdisk:
+ * the shell appends ".elf", forks, the child execs it and the parent waits.
+ * If exec fails the child prints why and exits, so only one shell stays alive.
  *
  * The console is line-buffered (uart.c): read() blocks until Enter and then
  * returns at most one line, including its '\n'. read_line() still loops,
@@ -50,6 +52,7 @@ int parseline(char *line, char **args, int max_args){
 int main() {
     char line[MAX];
     char *args[17];
+    int pid;
     while (1) {
         printf("lazux> ");
         int n = read_line(line, sizeof(line));
@@ -64,15 +67,29 @@ int main() {
         if(argc == 0){
             continue;
         }
-        if(ms_compare(args[0], "exit") == 0 ) {
+        if(lz_compare(args[0], "exit") == 0 ) {
             if(argc == 1){
                 return 0;
             }else{
                 lz_error("exit", "too many arguments");
             }
         }else {
-            for(int i = 0; i < argc; i++){
-                printf("arg[%d] = [%s]\n", i, args[i]);
+            pid = fork();
+            if(pid < 0) lz_error("fork", lz_strerror(pid));
+            else if(pid == 0){
+                char name[64];
+                if(lz_length(args[0]) > 64-5){
+                    lz_error(args[0], "Too long of a name");
+                    exit(1);
+                }
+                lz_copy(name, args[0]);
+                lz_concat(name, ".elf");
+                int res = exec(name);
+                lz_error(args[0], lz_strerror(res));
+                exit(1);
+            }else{
+                wait();
+                
             }
         }
     }

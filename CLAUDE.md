@@ -46,7 +46,7 @@ make clean
 | `proc/process.c` | process table, `alloc_proc`, `load_elf`, `schedule`, `sleep_on`/`wakeup`, `free_proc` |
 | `main.c` | `kmain`: PMM → VMM/MMU → procs → load `init.elf` from RAMDISK → arm timer → U-mode |
 | `include/` | `proc.h` (PCB, constants), `platform.h` (board memory map: UART0/PLIC base, size, IRQ), `syscall.h`, `errno.h`, `vmm.h`, `mkramdisk.h`, `plic.h`, `uart.h` (UART registers/bits), … |
-| `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers, `lz_error`/`lz_strerror`), `mystring.c` (`ms_*` string functions), `lazux.h` (includes `errno.h`), `main.c` (init: fork → exec `sh.elf` → wait), `sh.c` (the shell), `test2.c`, `readtest.c` (console input test) |
+| `user/` | `start.S`, `syscalls.c` (user libc-lite: printf, malloc, wrappers, `lz_error`/`lz_strerror`), `mystring.c` (`lz_*` string functions), `lazux.h` (includes `errno.h`), `main.c` (init: fork → exec `sh.elf` → wait), `sh.c` (the shell), `test2.c`, `readtest.c` (console input test) |
 | `../tools/mkramdisk.c` | host tool packing ELFs into `ramdisk.img` |
 
 ## Key invariants — don't break these
@@ -140,24 +140,20 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
      ESC split across interrupts, Delete `ESC[3~`, Alt+x, Tab/Ctrl-C, backspace, UTF-8, 4-byte reads, 140-char overflow)
      + user's interactive runs. `readtest` prints non-printables as `\xNN` (found `ESC[A` from Up-arrow habit).
   Not done (optional): Ctrl-U kill line.
-- 🔨 **Shell (`user/sh.c`, ROADMAP §1.1)** — all shell code user-written, Claude-reviewed:
+- ✅ **Shell (`user/sh.c`, ROADMAP §1.1)** — all shell code user-written, Claude-reviewed:
   - ✅ `DEBUG_SYSCALLS` flag hides trace prints (`acac2ae`); prompt `lazux> ` + `read_line()` (loops to `\n`/full,
     stops on a 0-byte read; EOF → shell returns 0) (`acac2ae`, `2699144`); in-place `parseline()` → `args[]` (max 16,
     `char *args[17]`, NULL-terminated) (`9fdf77e`); `exit` built-in checked right after parsing — `exit` alone ends
     the shell, `exit <args>` → `[exit] too many arguments` (user chose this over bash's behaviour) (`683e1fa`).
-  - ✅ Claude-written helpers: `user/mystring.c` (`ms_length/copy/ncopy/concat/nconcat/compare/ncompare/search`,
+  - ✅ Claude-written helpers: `user/mystring.c` (`lz_length/copy/ncopy/concat/nconcat/compare/ncompare/search`,
     ported from the user's CS-255 a2 module, asserts removed, unsigned compares) (`79c0edb`); `lz_error(who, what)`
     prints `[who] what` on fd 2, `lz_strerror(code)` = Lazux-worded errno text (`32d6760`). init/test2/readtest use them.
-  - 🔨 **IN PROGRESS (uncommitted, does not build yet):** fork → exec → wait in `sh.c`'s `else` branch. Decided: the
-    user types `test2`, the shell appends `.elf` (`ms_copy` + `ms_concat` into `char name[64]`, length-checked).
-    Open review points given to the user (let them fix; hints only):
-    1. build error: `int status = wait();` set but unused → just `wait();` (it returns a pid, not a status);
-    2. name too long → silent `exit(1)`; should `lz_error` first;
-    3. `if (res < 0)` around the post-exec error + `exit(1)`: exec only returns on failure, drop the `if`;
-    4. `lz_error("fork", "Failed to fork")` → pass `lz_strerror(pid)`.
-    Acceptance: `test2` runs → back to prompt; `nosuch` → `[nosuch] nothing by that name in the ramdisk` → a single
-    `exit` then halts (proves the failed child exited); `exit` → clean halt. Then tick the two §1.1 boxes + `.elf` box.
-- ⏳ After §1.1: ROADMAP §1.2 docs (README Phase 6 list, `main.c` `MAX_PROCS`), §1.3 optional heap guard, §1.4 close
+  - ✅ fork → exec → wait for external commands (2026-10-20): the user types `test2`, the shell appends `.elf`
+    (`lz_copy` + `lz_concat` into `char name[64]`; names over 59 chars → `[name] Too long of a name`). A failed
+    exec prints `[name] <lz_strerror>` and the child `exit(1)`s; a failed fork prints `[fork] <lz_strerror>`.
+    Verified scripted: `test2`, `nosuch`, 60-char name, `exit x`, then a single `exit` halts. §1.1 complete.
+  - String helpers renamed `ms_*` → `lz_*` (2026-10-20, Claude, on request).
+- ⏳ **Next:** ROADMAP §1.2 docs (README Phase 6 list, `main.c` `MAX_PROCS`), §1.3 optional heap guard, §1.4 close
   Phase 6, then Phase 7 (capabilities; the user expanded §2–§4 with a syscall migration map — fork/exec/putchar go).
 - Phase 6 leftovers (RAMDISK writes, filesystem API, heap reclaim) are to be **deferred**, not built (ROADMAP §1.4).
 - Minor cleanup: `main.c` still declares `extern process_t process_table[64]` — use `MAX_PROCS` (ROADMAP §1.2).
@@ -168,7 +164,8 @@ Phases 0–5 complete. **Phase 6 (filesystem & I/O)** in progress.
 - When reviewing, the user often asks for **small hints, not solutions**. If they say they're lost, switch to a
   concrete worked example (index/"boxes" diagram of the buffer, step-by-step trace) — abstract explanations failed.
 - Follow `ROADMAP.md` rules: tick a box only after a `-Werror` build + QEMU acceptance + the user's OK; log detours.
-- Commit messages credit who wrote what ("user-written"). End with the Co-Authored-By line.
+- Commit messages credit who wrote what ("user-written"). **No** Co-Authored-By line (user, 2026-10-19).
+  When the user OKs a commit, Claude runs it.
 
 ## Vault sync (Obsidian second brain)
 

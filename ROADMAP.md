@@ -31,13 +31,14 @@ not by building everything on the old punch list.
 ### 1.1 Shell step 2: fork + exec + wait
 - [x] Parse the line: trim it and take the first word as the program name. An empty line just shows the prompt again. (2026-10-14, 9fdf77e)
 - [x] Built-in `exit` runs in the shell itself, before any fork. (2026-10-16, 683e1fa)
-- [ ] External command: `fork()` → child `exec(name)` → parent `wait()`.
-- [ ] **Child exits if `exec` fails** (prints an error and calls `exit(1)`). Without this, the failed child becomes
-      a second shell competing for fd 0.
+- [x] External command: `fork()` → child `exec(name)` → parent `wait()`.
+- [x] **Child exits if `exec` fails** (prints an error and calls `exit(1)`). Without this, the failed child becomes
+      a second shell competing for fd 0. (2026-10-20)
 - [x] `read_line()` guard: never index `buffer[len - 1]` when `len == 0` (a 0-byte read must not loop or underflow). (2026-10-14, 2699144)
-- [ ] Program names get `.elf` handling decided (type `test2` or `test2.elf`; pick one and document it).
-- [ ] **Acceptance:** boot → `lazux>` prompt → `test2.elf` runs and returns to the prompt → an unknown
-      name prints an error and returns to the prompt with only one shell alive → `exit` → system halts cleanly.
+- [x] Program names get `.elf` handling decided (type `test2` or `test2.elf`; pick one and document it).
+      Decided: the user types `test2`, the shell appends `.elf` (names over 59 chars are refused). (2026-10-20)
+- [x] **Acceptance:** boot → `lazux>` prompt → `test2.elf` runs and returns to the prompt → an unknown
+      name prints an error and returns to the prompt with only one shell alive → `exit` → system halts cleanly. (2026-10-20, QEMU scripted run)
 - Out of scope for now: argv, pipes, redirection, job control, line editing (raw mode). See §4.
 
 ### 1.2 Docs catch up with the code
@@ -144,4 +145,4 @@ fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `ex
 
 Record any work done outside the current step: date, what, why.
 
-- 2026-10-14: user-space string module `user/mystring.c` (`ms_compare`, `ms_length`, `ms_copy`, `ms_concat`, …) ported from the CS-255 assignment 2 module and linked into every user program. Why: the `exit` built-in needs a string compare and `.elf` naming needs copy/concat; reusing tested code beat rewriting it.
+- 2026-10-14: user-space string module `user/mystring.c` (`lz_compare`, `lz_length`, `lz_copy`, `lz_concat`, …) ported from the CS-255 assignment 2 module and linked into every user program. Why: the `exit` built-in needs a string compare and `.elf` naming needs copy/concat; reusing tested code beat rewriting it.

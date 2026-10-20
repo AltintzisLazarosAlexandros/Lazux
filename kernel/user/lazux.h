@@ -112,13 +112,13 @@ void lz_error(const char *who, const char *what);
 
 /*
  * String functions (user/mystring.c, ported from the CS-255 string module).
- * ms_compare/ms_ncompare return 0 when equal, like strcmp/strncmp.
+ * lz_compare/lz_ncompare return 0 when equal, like strcmp/strncmp.
  */
-size_t ms_length(const char *pcStr);
-void ms_copy(char *pcDest, const char *pcSrc);
-void ms_ncopy(char *pcDest, const char *pcSrc, size_t n);
-void ms_concat(char *pcDest, const char *pcSrc);
-void ms_nconcat(char *pcDest, const char *pcSrc, size_t n);
-int ms_compare(const char *pcStr1, const char *pcStr2);
-int ms_ncompare(const char *pcStr1, const char *pcStr2, size_t n);
-const char *ms_search(const char *pcHaystack, const char *pcNeedle);
+size_t lz_length(const char *pcStr);
+void lz_copy(char *pcDest, const char *pcSrc);
+void lz_ncopy(char *pcDest, const char *pcSrc, size_t n);
+void lz_concat(char *pcDest, const char *pcSrc);
+void lz_nconcat(char *pcDest, const char *pcSrc, size_t n);
+int lz_compare(const char *pcStr1, const char *pcStr2);
+int lz_ncompare(const char *pcStr1, const char *pcStr2, size_t n);
+const char *lz_search(const char *pcHaystack, const char *pcNeedle);
