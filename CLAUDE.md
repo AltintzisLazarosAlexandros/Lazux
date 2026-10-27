@@ -85,6 +85,13 @@ make clean
   `esc_state` machine (ESC → `[` → final byte `0x40`–`0x7e`); other bytes `< 0x20` dropped. `c` is `unsigned char`
   (UTF-8 kept). `\r` → `\n`. Cursor movement/history are deliberately **not** kernel work (user-space line editor + a
   future raw mode, as Linux readline does).
+- **Phase 7 design conditions** (`docs/capabilities.md` §8a; nothing in the code enforces them):
+  1. **One hart, and no interrupts or preemption inside the kernel.** The planned `kill` is safe only because the
+     target is never halfway through kernel code when it runs. Adding SMP or kernel preemption means revisiting
+     `kill` (§8) first.
+  2. **No IPC: a running process can never receive a capability** (only a new process gets some, at `spawn`).
+     Freeing objects by reference count relies on this; with IPC two processes could hold capabilities to each
+     other and both would leak forever. Adding IPC means revisiting the freeing rule (§7) first.
 - Device MMIO (UART `0x10000000`, PLIC `0x0C000000`, see `platform.h`) is identity-mapped R+W, never X/U, in every
   page table. It sits under the same root entry (VPN[2]=0) as user memory, so `vmm_copy_uvm` must **merge** into
   the child's existing tables, never overwrite them, or forked children lose the device mappings.
@@ -108,10 +115,11 @@ Errors (`errno.h`): `E_NOENT -1`, `E_BADF -2`, `E_FAULT -3`, `E_NOMEM -4`, `E_PE
    `ramdisk.img` dependencies + `$(MKRAMDISK)` args, and to `clean`.
 3. Run it via `exec("foo.elf")`.
 
-## Current status (as of 2026-10-20)
+## Current status (as of 2026-10-27)
 
-Phases 0–6 complete (**Phase 6 closed 2026-10-20**, DEVLOGS 20-10-2026). **Phase 7 (capabilities)** is next: ROADMAP §2,
-Phase 7a = design doc `docs/capabilities.md` only, no kernel code until the user agrees to it.
+Phases 0–6 complete (**Phase 6 closed 2026-10-20**, DEVLOGS 20-10-2026). **Phase 7a done 2026-10-27**: the capability
+model is agreed in `docs/capabilities.md` (DEVLOGS 27-10-2026). **Next: Phase 7b** (ROADMAP §3), first step: remove
+`SYS_PUTCHAR`.
 
 - ✅ Hardening (commit `969ce51`): pointer validation, errno codes, W^X, several VMM/PMM/fork fixes.
 - ✅ **Stage A — blocking I/O groundwork (commit `5fe6a11`):** `sleep_on`/`wakeup` wait channels + `chan`
@@ -165,8 +173,14 @@ Phase 7a = design doc `docs/capabilities.md` only, no kernel code until the user
   `SYS_SBRK` leaked frames when the PMM ran out partway → `vmm_unmap_range()` rollback (user-written, fixed up by Claude).
 - ✅ ROADMAP §1.4 (2026-10-20): Phase 6 closed by explicit deferral — DEVLOGS 20-10-2026 + README. Deferred: RAMDISK
   writes (→ real block device), filesystem API (→ after capabilities), heap reclaim (no pressure).
-- ⏳ **Next: Phase 7a** (ROADMAP §2): the capability design doc. Claude's role there is to argue and poke holes, keep
-  the model small; the user expanded §2–§4 with a syscall migration map (fork/exec/putchar go, spawn arrives).
+- ✅ **Phase 7a** (2026-10-27): `docs/capabilities.md`, the user's design, written up by Claude and revised after an
+  outside review. Key points: per-process `cap_t { obj, rights, offset }` → shared `object_t` in a static pool
+  (`OBJ_MAX 128`, one object per thing: 1 CONSOLE, 1 DIR, 1 FILE per RAMDISK file, 1 PROCESS per process), refcount
+  freeing; rights READ/WRITE/EXEC/LOOKUP/WAIT/KILL only shrink (`cap_dup`); init gets console 0/1/2 + the DIR in
+  slot 3; `spawn(program_cap, caps[], n)` replaces fork+exec; `wait(proc_cap, &status)` with
+  `exit_status_t { reason, code }`, frees nothing (freed on last close); `kill` in v1.
+- ⏳ **Next: Phase 7b** (ROADMAP §3): remove `SYS_PUTCHAR`, then the object pool + capability table, `open(dir_cap,
+  name)`, rights checks, `cap_dup`, console caps granted only to init. Guardrail: no rewrites of unrelated subsystems.
 
 ### Working style (how this collaboration runs — keep it)
 - The user (Alex) writes the code; Claude explains, reviews, tests in QEMU, writes docs/commits/vault notes, and

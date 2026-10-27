@@ -68,36 +68,35 @@ Goal: a short design doc, `docs/capabilities.md`, that answers the questions bel
 Claude's job here is to argue: poke holes, compare against seL4/Fuchsia/KeyKOS-style approaches where
 useful, and keep the model small.
 
-- [ ] **What is a capability in Lazux?** Recommended starting point: an index into a per-process kernel table,
+- [x] **What is a capability in Lazux?** Recommended starting point: an index into a per-process kernel table,
       the way an fd is today. Decide what an entry holds (object type, object pointer, rights bits).
-- [ ] **Object types for v1.** Likely: console, RAMDISK file, RAMDISK directory (the "namespace"), program image.
+- [x] **Object types for v1.** Likely: console, RAMDISK file, RAMDISK directory (the "namespace"), program image.
       Keep the list short.
-- [ ] **Rights.** Which bits exist (read / write / exec / grant?) and whether a holder can derive a reduced copy.
-- [ ] **Bootstrap.** What capabilities `init` starts with, and who grants them (the kernel at boot).
-- [ ] **Passing.** How a child gets capabilities: explicitly listed at creation, nothing inherited implicitly.
-- [ ] **Revocation.** v1 = coarse "kill the domain" (as in the README). Write down that finer revocation is out of scope.
-- [ ] **Syscall surface.** Confirm or change every row of the migration map below and copy the final
+- [x] **Rights.** Which bits exist (read / write / exec / grant?) and whether a holder can derive a reduced copy.
+- [x] **Bootstrap.** What capabilities `init` starts with, and who grants them (the kernel at boot).
+- [x] **Passing.** How a child gets capabilities: explicitly listed at creation, nothing inherited implicitly.
+- [x] **Revocation.** v1 = coarse "kill the domain" (as in the README). Write down that finer revocation is out of scope.
+- [x] **Syscall surface.** Confirm or change every row of the migration map below and copy the final
       version into `docs/capabilities.md`.
-- [ ] **Acceptance:** Alex has read and agreed to the doc, and it has a DEVLOGS entry.
+- [x] **Acceptance:** Alex has read and agreed to the doc, and it has a DEVLOGS entry. (2026-10-27, docs/capabilities.md)
 
-### Unix syscall migration map (proposal, to be confirmed in this step)
+### Syscall migration map (final, agreed 2026-10-27; source of truth: `docs/capabilities.md` §9)
 
-The question for each syscall: *does it grant access without an explicit grant?* If yes, it changes.
-
-| # | Today | Ambient authority? | Proposed fate | Done in |
-|---|---|---|---|---|
-| 1 | `SYS_PUTCHAR` | **Yes**: prints with no fd/cap at all | **Remove.** All output goes through `write(console_cap, …)` | §3 |
-| 2 | `SYS_EXIT` | No | Keep as is | — |
-| 3 | `SYS_FORK` | **Yes**: child inherits all memory + all caps | **Remove**, replaced by `spawn` | §4 |
-| 4 | `SYS_EXEC(name)` | **Yes**: global program lookup by name | **Remove**, folded into `spawn(program_cap, …)` | §4 |
-| 5 | `SYS_WAIT` | **Yes**: implicit parent/child link via `parent_pid` | **Change** to `wait(process_cap)`, where the cap is returned by `spawn` | §4 |
-| 6 | `SYS_SBRK` | Mild: any process can grow up to `heap_max` | **Keep for v1** as a per-process quota. Memory-as-capability is out of scope (record this) | — |
-| 7 | `SYS_OPEN(name)` | **Yes**: global name lookup | **Change** to `open(dir_cap, name)` | §3 |
-| 8 | `SYS_READ` | No (needs an fd) | Keep, add a rights check | §3 |
-| 9 | `SYS_WRITE` | No (needs an fd) | Keep, add a rights check | §3 |
-| 10 | `SYS_CLOSE` | No | Keep; it now means "drop this capability" | §3 |
-| new | `SYS_SPAWN` | — | `spawn(program_cap, caps[], n)` returns a process cap | §4 |
-| new | cap derive/dup? | — | Decide whether a holder can make a reduced-rights copy (needed to hand a child a read-only cap) | §2 |
+| # | Today | Fate | Done in |
+|---|---|---|---|
+| 1 | `SYS_PUTCHAR` | **Remove.** Output goes through `write(console_cap, …)` | §3 |
+| 2 | `SYS_EXIT` | Keep. Now also closes every capability the process holds | §3 |
+| 3 | `SYS_FORK` | **Remove**, replaced by `spawn` | §4 |
+| 4 | `SYS_EXEC(name)` | **Remove**, replaced by `spawn(program_cap, …)` | §4 |
+| 5 | `SYS_WAIT` | **Change** to `wait(process_cap, &status)`, status is an `exit_status_t` { reason, code } | §4 |
+| 6 | `SYS_SBRK` | Keep as a per-process quota (memory is not a capability) | — |
+| 7 | `SYS_OPEN(name)` | **Change** to `open(dir_cap, name)` | §3 |
+| 8 | `SYS_READ` | Keep, check `READ` | §3 |
+| 9 | `SYS_WRITE` | Keep, check `WRITE` | §3 |
+| 10 | `SYS_CLOSE` | Keep. Means "drop this capability" (refcount − 1) | §3 |
+| new | `SYS_SPAWN` | `spawn(program_cap, caps[], n)` → process capability | §4 |
+| new | `SYS_CAP_DUP` | `cap_dup(cap, rights)` → new slot, same object and offset, a subset of the rights | §3 |
+| new | `SYS_KILL` | `kill(process_cap)` → target ends with reason `EXIT_KILLED` | §4 |
 
 ## 3. Phase 7b: pilot on the fd table
 
@@ -108,26 +107,43 @@ fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `ex
 
 - [ ] Remove `SYS_PUTCHAR` (kernel case + user wrapper). User `putchar` already uses `write(1, …)`, so this
       should be a deletion, not a migration. Do this **first**: until it's gone, no console test can pass.
-- [ ] Turn the per-process fd table into the capability table from §2 (same storage, new meaning and rights).
+- [ ] Global object pool `object_t objects[OBJ_MAX]` (`OBJ_MAX = 128`): type, refcount, per-type fields. **One object
+      per thing**: one CONSOLE, one DIR, one FILE per RAMDISK file (opening a file again reuses its object).
+- [ ] Turn the per-process fd table into the capability table from §2: `cap_t { obj, rights, offset }`,
+      `CAP_MAX = 16` (same storage, new meaning and rights). The offset lives in the entry, not the object.
+- [ ] `SYS_CAP_DUP`: `cap_dup(cap, rights)` copies the whole entry (same object, same offset) with a subset of the
+      rights; asking for a right the original lacks fails with `E_PERM`.
+- [ ] `exit` (and the U-mode fault path, via `exit_current`) closes every capability the process holds, so object
+      refcounts drop.
 - [ ] `open` takes a **directory capability** plus a name. No more global lookup.
 - [ ] Console capabilities are granted explicitly to `init` at boot instead of being pre-filled in every process.
 - [ ] Rights are checked on `read`/`write` (e.g. a read-only file cap rejects `write` with `E_PERM`).
 - [ ] **Acceptance:** a test program without a directory capability cannot open any file; one with it can.
-      Existing programs still run after being given the caps they need.
+      A read-only file cap rejects `write`. A `cap_dup` copy never has more rights than the original and keeps the
+      offset. Opening the same file many times in a loop never runs the object pool out. Existing programs still
+      run after being given the caps they need.
 
 ## 4. Phase 7c: spawn replaces fork + exec
 
 - [ ] `spawn(program_cap, caps_to_pass[], n)` creates a process from a program image with **only** the listed caps,
       and returns a **process capability** to the caller.
-- [ ] `wait(process_cap)` replaces `wait()`. The parent/child relationship becomes "whoever holds the process cap",
+- [ ] `exit_status_t { reason, code }` and `EXIT_NORMAL` / `EXIT_FAULT` / `EXIT_KILLED` in a header shared by kernel
+      and user code; the PCB gains an `exit_status_t` field; `exit_current()` takes the reason and code. The reason
+      is never encoded as a reserved code value.
+- [ ] `wait(process_cap, &status)` replaces `wait()`. The parent/child relationship becomes "whoever holds the process cap",
       and `parent_pid` is removed from the PCB, or kept only for debug output.
-- [ ] Decide what happens to a process cap when its target exits (zombie until the cap is closed or waited on).
-- [ ] Coarse revocation: a `kill(process_cap)` or equivalent, matching "kill the domain" from §2. Can be deferred
-      if §2 says so.
+- [ ] Freeing rule (decided in §2): `wait` reports the status but frees nothing; a process is freed when it has
+      exited **and** no capability points to it. A process that exits with no holder is freed by the kernel once it
+      no longer runs on that process's stack (e.g. in `schedule`).
+- [ ] `kill(process_cap)` (needs `KILL`): ends the target with reason `EXIT_KILLED`, same steps as `exit_current`,
+      clears its `chan`. Part of v1 (decided in §2). Safe only under the conditions in `docs/capabilities.md` §8a.
 - [ ] `fork`/`exec` removed, or kept only as long as needed during migration. Decide in §2 and record it.
       Remember `vmm_copy_uvm` exists only for `fork`; if fork goes, it goes too.
 - [ ] `init` and the shell move to `spawn`. The shell passes the console caps to the programs it launches.
       (The fork/exec code from §1.1 gets replaced here. That's expected; §1.1 only proves the path works.)
+- [ ] **Acceptance:** `wait` reports `EXIT_NORMAL` + code (a child calling `exit(-128)` still reads as normal),
+      `EXIT_FAULT` for a crashing child, `EXIT_KILLED` after `kill`. **Leak test:** run 100 commands from the shell
+      (more than `MAX_PROCS`) and the system is still fine.
 - [ ] **Acceptance:** a spawned child that wasn't given the console cap can't print. A child given only a
       read-only file cap can't open other files. A process that doesn't hold a process cap can't wait on
       or kill that process.
@@ -151,3 +167,7 @@ Record any work done outside the current step: date, what, why.
   Phase 6 closes without known holes): (1) a U-mode fault prints "(kill)" but spins in `for (;;) {}` in the kernel,
   freezing the system - it should end the process like `SYS_EXIT`; (2) `SYS_SBRK` keeps the pages it already mapped
   when `pmm_alloc_page` fails partway, and the next sbrk re-maps those addresses, leaking the old frames for good.
+- 2026-10-27: `docs/capabilities.md` revised after an outside review before committing: exit reason as a separate
+  field (not a reserved code), the IPC/SMP conditions written down as invariants, one FILE object per RAMDISK file,
+  copies keep the offset, the zombie cost of the freeing rule plus a 100-command leak test. §3/§4 task lists updated
+  to match.

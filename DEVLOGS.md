@@ -701,3 +701,29 @@ Phase 6 is closed. Lazux boots into an interactive shell that runs programs from
 
 ### Next: Phase 7 - capability-based authority
 Phase 7a is design only: `docs/capabilities.md` defines what a capability is (likely an index into a per-process kernel table, like an fd today), the v1 object types, rights, bootstrap, passing and coarse revocation, plus the Unix-syscall migration map (fork/exec/putchar go; spawn arrives). No kernel change before that doc is agreed. See `ROADMAP.md` §2–§4.
+
+---
+
+## 27-10-2026 — Phase 7a: Capability Model Agreed
+
+### Summary
+The design for removing ambient authority is written and agreed in `docs/capabilities.md` (Alex's design, written up by Claude, revised once after an outside review). No kernel code changed; Phase 7b and 7c build it.
+
+### Decisions
+- **Two layers:** a per-process capability table of `cap_t { obj, rights, offset }` (replaces `open_files`, `CAP_MAX = 16`) pointing to shared `object_t` entries in a static pool (`OBJ_MAX = 128`; Lazux has no kernel allocator). Objects are freed by reference count.
+- **One object per thing, not per open:** one CONSOLE, one DIR (the RAMDISK), one FILE per RAMDISK file, one PROCESS per process. The offset lives in the capability entry, so sharing a FILE object is safe and opening files can't run the pool out. Copying a capability (`cap_dup`, `spawn`) copies the offset too.
+- **Rights** READ / WRITE / EXEC / LOOKUP / WAIT / KILL, checked one per syscall (`E_PERM`), and they only shrink (`cap_dup`). A "program" is a FILE with EXEC; files opened through a DIR get its READ/EXEC bits.
+- **Bootstrap:** only `init` gets capabilities from the kernel (console in slots 0/1/2, the DIR in slot 3). 0/1/2 is a convention, not a kernel rule.
+- **`spawn(program_cap, caps[], n)`** replaces `fork` + `exec`: a fresh address space, and the child holds only the listed capabilities (`caps[i]` → slot `i`). `vmm_copy_uvm` goes with fork.
+- **`wait(process_cap, &status)`** writes `exit_status_t { reason, code }` (`EXIT_NORMAL` / `EXIT_FAULT` / `EXIT_KILLED`). The reason is a separate field so that every `int` stays a valid exit code (a reserved `-128` would have made `exit(-128)` look like a fault). `wait` frees nothing; a process is freed once it has exited and its last capability is closed.
+- **`kill(process_cap)` is in v1.** Revocation stays coarse ("kill the domain").
+
+### Conditions the design relies on (added to CLAUDE.md invariants)
+- `kill` is safe only on one hart with no interrupts or preemption inside the kernel.
+- Reference-count freeing works only because there is no IPC: a running process can never receive a capability, so no two processes can hold capabilities to each other. Adding IPC, SMP or kernel preemption means revisiting the doc's §7–§8 first.
+
+### Known cost
+- A parent that `wait`s but never `close`s leaves one zombie per child (the process table fills after about 63 commands). The 7c acceptance list includes a 100-command shell test.
+
+### Next
+- Phase 7b (`ROADMAP.md` §3): remove `SYS_PUTCHAR`, then the object pool and capability table, `open(dir_cap, name)`, rights checks, `cap_dup`, and console capabilities granted only to `init`.
