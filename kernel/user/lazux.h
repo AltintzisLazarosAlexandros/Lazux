@@ -17,16 +17,14 @@
 /*
  * putchar() - Output single character to console
  * 
- * User-space wrapper for SYS_PUTCHAR syscall (function ID 1).
- * Invokes ecall to request kernel to output character.
- * 
+ * Writes one byte to fd 1 with write(1, &c, 1). There is no putchar
+ * syscall (SYS_PUTCHAR was removed in Phase 7b): all output goes through a
+ * descriptor, so printing needs the console to be open on fd 1.
+ *
  * args:
- *   c - character to output (cast to int for syscall)
- * 
+ *   c - character to output
+ *
  * returns: none
- * 
- * Implementation: Inline assembly ecall with a7=1, a0=c
- * Kernel trap handler receives this and writes to console via SBI.
  */
 void putchar(char c);
 

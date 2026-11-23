@@ -10,7 +10,7 @@
 #define SYS_SBRK    6
 
 // File System / I/O
-#define SYS_PUTCHAR 1   
+// 1 was SYS_PUTCHAR (console output with no fd at all). Removed in Phase 7b; the number is not reused.
 #define SYS_OPEN    7
 #define SYS_READ    8
 #define SYS_WRITE   9

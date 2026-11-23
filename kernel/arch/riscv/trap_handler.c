@@ -280,11 +280,6 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
         __asm__ volatile("csrs sstatus, %0" : : "r"(1 << 18));
         switch (tf->a7) /* Dispatch on syscall function ID */
         {
-        case SYS_PUTCHAR: /* SYS_PUTCHAR: output single character */
-            sbi_putchar((char)tf->a0); /* Character to output is in a0 */
-            tf->a0 = 0;                 /* Set return value: 0 = success */
-            break;
-            
         case SYS_EXIT: /* SYS_EXIT: terminate current process */
 	    #if DEBUG_SYSCALLS
             sbi_puts("\n[kernel] Process ");
@@ -802,9 +797,10 @@ trap_frame_t* trap_handler(trap_frame_t *tf)
             	tf->a0 = 0; 
             	return tf;
 	}
-        default: /* Unknown syscall: kernel error */
+        default: /* Unknown syscall: a bug in the user program, not the kernel */
             sbi_puts("\n[kernel] unknown syscall, killing user\n");
-            for (;;) {}
+            /* End it like a U-mode fault, so its parent's wait() reaps it and the system goes on. */
+            return exit_current(tf);
         }
         return tf;
     default: /* Unhandled exception type (page fault, illegal instruction, etc.) */

@@ -105,8 +105,9 @@ Ambient-authority sites in today's kernel (the actual targets):
 `fork` (child inherits all authority), `wait` (implicit parent/child link), `SYS_PUTCHAR` (console with no
 fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `exec` and `wait` are handled in §4.
 
-- [ ] Remove `SYS_PUTCHAR` (kernel case + user wrapper). User `putchar` already uses `write(1, …)`, so this
+- [x] Remove `SYS_PUTCHAR` (kernel case + user wrapper). User `putchar` already uses `write(1, …)`, so this
       should be a deletion, not a migration. Do this **first**: until it's gone, no console test can pass.
+      (2026-11-23: also, an unknown syscall now ends the program via `exit_current` instead of freezing the kernel)
 - [ ] Global object pool `object_t objects[OBJ_MAX]` (`OBJ_MAX = 128`): type, refcount, per-type fields. **One object
       per thing**: one CONSOLE, one DIR, one FILE per RAMDISK file (opening a file again reuses its object).
 - [ ] Turn the per-process fd table into the capability table from §2: `cap_t { obj, rights, offset }`,
