@@ -5,6 +5,8 @@
  * Implementations are in lib/string.c.
  */
 
+#pragma once
+
 #include <stdint.h>
 #include <stddef.h>
 

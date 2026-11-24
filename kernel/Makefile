@@ -93,7 +93,8 @@ OBJS = \
     mm/pmm.o \
     mm/vmm.o \
     proc/process.o \
-    lib/string.o \
+    proc/object.o \
+	lib/string.o \
     main.o
 
 # NOTE: header changes are not tracked as dependencies. After editing anything

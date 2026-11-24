@@ -18,6 +18,7 @@
  */
 
 #include "proc.h"
+#include "object.h"
 #include "sbi.h"
 #include "pmm.h"
 #include "string.h"

@@ -12,6 +12,8 @@
  * [11:0]  = Page offset (12 bits) - offset within 4KB page
  */
 
+#pragma once
+
 #include <stdint.h>
 
 /* SATP (Supervisor Address Translation and Protection) CSR register format for Sv39 */

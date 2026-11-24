@@ -12,6 +12,8 @@
  * Allocation requests get pages from free region, marked as allocated in bitmap.
  */
 
+#pragma once
+
 #include <stdint.h>
 
 /*

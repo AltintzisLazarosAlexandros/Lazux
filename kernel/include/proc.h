@@ -15,6 +15,8 @@
  * RUNNING -> (exception) -> UNUSED
  */
 
+#pragma once
+
 #include "trap_header.h"
 #include "vmm.h"
 

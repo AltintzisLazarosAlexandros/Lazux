@@ -108,8 +108,10 @@ fd at all), default fds 0/1/2 (console access assumed, not granted). `fork`, `ex
 - [x] Remove `SYS_PUTCHAR` (kernel case + user wrapper). User `putchar` already uses `write(1, …)`, so this
       should be a deletion, not a migration. Do this **first**: until it's gone, no console test can pass.
       (2026-11-23: also, an unknown syscall now ends the program via `exit_current` instead of freezing the kernel)
-- [ ] Global object pool `object_t objects[OBJ_MAX]` (`OBJ_MAX = 128`): type, refcount, per-type fields. **One object
+- [x] Global object pool `object_t objects[OBJ_MAX]` (`OBJ_MAX = 128`): type, refcount, per-type fields. **One object
       per thing**: one CONSOLE, one DIR, one FILE per RAMDISK file (opening a file again reuses its object).
+      (2026-11-24: `proc/object.c` - `object_alloc`, `get_file_object` matches data AND size because mkramdisk
+      gives an empty file the next file's offset; `reference_take`/`reference_drop`. Not called by anything yet)
 - [ ] Turn the per-process fd table into the capability table from §2: `cap_t { obj, rights, offset }`,
       `CAP_MAX = 16` (same storage, new meaning and rights). The offset lives in the entry, not the object.
 - [ ] `SYS_CAP_DUP`: `cap_dup(cap, rights)` copies the whole entry (same object, same offset) with a subset of the

@@ -120,7 +120,7 @@ Errors (`errno.h`): `E_NOENT -1`, `E_BADF -2`, `E_FAULT -3`, `E_NOMEM -4`, `E_PE
 
 Phases 0–6 complete (**Phase 6 closed 2026-10-20**, DEVLOGS 20-10-2026). **Phase 7a done 2026-10-27**: the capability
 model is agreed in `docs/capabilities.md` (DEVLOGS 27-10-2026). **Phase 7b in progress** (ROADMAP §3): `SYS_PUTCHAR` removed
-(2026-11-23); next step: the object pool.
+(2026-11-23), object pool `proc/object.c` (2026-11-24); next step: the capability table.
 
 - ✅ Hardening (commit `969ce51`): pointer validation, errno codes, W^X, several VMM/PMM/fork fixes.
 - ✅ **Stage A — blocking I/O groundwork (commit `5fe6a11`):** `sleep_on`/`wakeup` wait channels + `chan`
@@ -181,7 +181,8 @@ model is agreed in `docs/capabilities.md` (DEVLOGS 27-10-2026). **Phase 7b in pr
   slot 3; `spawn(program_cap, caps[], n)` replaces fork+exec; `wait(proc_cap, &status)` with
   `exit_status_t { reason, code }`, frees nothing (freed on last close); `kill` in v1.
 - 🔨 **Phase 7b** (ROADMAP §3): ✅ `SYS_PUTCHAR` removed (Claude-written on request; unknown syscalls now end the
-  program instead of freezing). Next: the object pool (user writes it), then the capability table, `open(dir_cap,
+  program instead of freezing). ✅ Object pool `proc/object.c` (2026-11-24; user-written, `object_alloc` + fixes Claude-written).
+  Next: the capability table, `open(dir_cap,
   name)`, rights checks, `cap_dup`, console caps granted only to init. Guardrail: no rewrites of unrelated subsystems.
 
 ### Working style (how this collaboration runs — keep it)
